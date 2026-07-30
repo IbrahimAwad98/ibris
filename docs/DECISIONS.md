@@ -154,3 +154,24 @@ rendering ever matters, the only real option is one process per document.
 the visible one on this single thread. The intended fix is a priority queue
 on the engine channel favouring the visible document's requests — not
 additional threads, which PDFium cannot tolerate.
+
+---
+
+## 009 — All IPC geometry is relative to the page's visible box
+
+**Decided:** Every coordinate crossing the IPC boundary (text runs, search
+rects, and anything geometric added later) is emitted relative to the page's
+visible box — crop box, falling back to media box — with a top-left origin.
+The conversion happens once, in `src-tauri/src/pdf/text.rs`.
+
+**Why:** PDFium's `FPDFText_*` char boxes are in absolute page space, while
+rendering maps the crop/media box to the bitmap — and that box need not
+start at (0,0). Real-world documents with offset origins exist; on them,
+absolute coordinates displaced every highlight and text run by the origin
+(constant in points, growing with zoom in pixels).
+
+**Consequence for fixtures:** zero-origin fixtures hide this entire class of
+bug — every test passed while highlights were visibly wrong. The fixture set
+must always include a non-zero-origin document (`offset-mediabox.pdf`), and
+geometry features should test against it, not only against the plain
+fixtures.
