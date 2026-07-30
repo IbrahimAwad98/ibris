@@ -100,10 +100,13 @@ Do not try to reconstruct text positions from the content stream by hand.
 ## Threading
 
 - The Tauri main thread handles IPC dispatch only.
-- PDF work runs on a Rayon thread pool.
-- PDFium is not thread-safe across documents in all configurations. Each open
-  document is owned by a single worker and accessed through a channel. Do not
-  share a `PdfDocument` across threads.
+- PDFium is not thread-safe — not even across separate documents with FFI
+  calls serialised (verified empirically; see decision 008). All PDFium work
+  runs on one process-global engine thread that owns every open
+  `PdfDocument`, reached through a channel (`src-tauri/src/pdf/engine.rs`).
+  Never call PDFium from any other thread.
+- CPU work that does not touch PDFium (encoding, diffing, text indexing) may
+  use a thread pool freely.
 
 Every Tauri command that can exceed ~16 ms is `async` and returns either a result
 or a job handle that emits progress events.
@@ -151,7 +154,9 @@ type PdfError =
   | { kind: "PasswordRequired" }
   | { kind: "Corrupt"; detail: string }
   | { kind: "Unsupported"; feature: string }
-  | { kind: "Io"; detail: string };
+  | { kind: "Io"; detail: string }
+  | { kind: "Cancelled" }                      // abandoned render; never user-surfaced
+  | { kind: "Internal"; detail: string };      // engine fallback; logged, generic message
 ```
 
 Never surface a raw Rust error string to the user. Every error kind maps to a
