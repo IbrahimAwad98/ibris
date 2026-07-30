@@ -15,6 +15,8 @@ import {
   sweepInFlight,
   tileCache,
 } from "./page-cache";
+import { SearchHighlights } from "./SearchHighlights";
+import { TextLayer } from "./TextLayer";
 
 interface PageViewProps {
   docId: number;
@@ -148,18 +150,28 @@ export function PageView({
         background: "#fff",
       }}
     >
-      <canvas
-        ref={canvasRef}
-        width={unrot.width}
-        height={unrot.height}
+      {/* The rotator: canvas, text layer, and highlights share this single
+          transform, so they can never drift apart under zoom or rotation. */}
+      <div
         style={{
           position: "absolute",
+          width: unrot.width,
+          height: unrot.height,
           left: (disp.width - unrot.width) / 2,
           top: (disp.height - unrot.height) / 2,
           transform: `rotate(${rotation}deg)`,
           transformOrigin: "center",
         }}
-      />
+      >
+        <canvas
+          ref={canvasRef}
+          width={unrot.width}
+          height={unrot.height}
+          style={{ position: "absolute", inset: 0 }}
+        />
+        <TextLayer docId={docId} pageIndex={pageIndex} scale={scale} />
+        <SearchHighlights pageIndex={pageIndex} scale={scale} />
+      </div>
     </div>
   );
 }
