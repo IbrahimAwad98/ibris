@@ -149,3 +149,8 @@ beats a lock discipline that demonstrably leaks.
 **Cost:** Rendering serialises across documents, not just within one. For a
 desktop viewer, effectively no cost — but if parallel multi-document
 rendering ever matters, the only real option is one process per document.
+
+**Follow-up (M1c):** Once tabs land, background documents will contend with
+the visible one on this single thread. The intended fix is a priority queue
+on the engine channel favouring the visible document's requests — not
+additional threads, which PDFium cannot tolerate.
