@@ -31,9 +31,12 @@ export function PageList() {
   const lastScroll = useRef({ left: 0, top: 0 });
   const prevScale = useRef(scale);
 
-  const state = useViewerStore.getState();
   const rotations = useMemo(
-    () => pages.map((_, i) => pageRotation({ ...state, rotationDoc, rotationByPage }, i)),
+    () =>
+      pages.map(
+        (_, i) =>
+          (((rotationDoc + (rotationByPage[i] ?? 0)) % 360) as 0 | 90 | 180 | 270),
+      ),
     [pages, rotationDoc, rotationByPage],
   );
   const dispSizes = useMemo(
