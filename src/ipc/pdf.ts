@@ -62,8 +62,47 @@ export async function renderPage(
   };
 }
 
+export interface TileRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Renders one tile of a page; same payload layout as renderPage. */
+export async function renderTile(
+  docId: number,
+  pageIndex: number,
+  scale: number,
+  tile: TileRect,
+  requestId: number,
+): Promise<RenderedPage> {
+  const buf = await invoke<ArrayBuffer>("render_tile", {
+    docId,
+    pageIndex,
+    scale,
+    tileX: tile.x,
+    tileY: tile.y,
+    tileWidth: tile.width,
+    tileHeight: tile.height,
+    requestId,
+  });
+  const view = new DataView(buf);
+  return {
+    width: view.getUint32(0, true),
+    height: view.getUint32(4, true),
+    data: new Uint8ClampedArray(buf, 8),
+  };
+}
+
 export async function cancelRender(requestId: number): Promise<void> {
   await invoke("cancel_render", { requestId });
+}
+
+/** One IPC round trip to abandon a whole batch of queued renders. */
+export async function cancelRenders(requestIds: number[]): Promise<void> {
+  if (requestIds.length === 0) return;
+  await invoke("cancel_renders", { requestIds });
 }
 
 export async function closeDocument(docId: number): Promise<void> {
