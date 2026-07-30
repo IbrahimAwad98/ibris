@@ -1,14 +1,23 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+mod commands;
+pub mod pdf;
+
+use pdf::service::PdfService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .manage(PdfService::new())
+        .invoke_handler(tauri::generate_handler![
+            commands::pdf::open_document,
+            commands::pdf::render_page,
+            commands::pdf::cancel_render,
+            commands::pdf::close_document,
+        ])
+        .run(tauri::generate_context!());
+
+    if let Err(e) = result {
+        eprintln!("fatal: failed to start ibris: {e}");
+        std::process::exit(1);
+    }
 }
