@@ -114,6 +114,11 @@ Before proposing a change as complete, run: `npm run typecheck`, `npm run lint`,
 - React components: `PascalCase`
 - Rust: standard `snake_case` / `PascalCase`
 
+**PowerShell scripts**
+- Every `.ps1` in this repo must be ASCII-only. Windows PowerShell 5.1 reads
+  BOM-less UTF-8 as ANSI and mangles em dashes and other punctuation into
+  string-parse errors. Plain hyphens, plain quotes.
+
 **Icons**
 - Application icons are generated from the SVG masters in `assets/logo/` via
   `scripts/gen-icons.py` and are never hand-edited.
