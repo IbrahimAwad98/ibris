@@ -11,3 +11,8 @@ body {
   color: #ececec;
   overflow: hidden;
 }
+
+.textlayer span::selection {
+  background: rgba(58, 132, 255, 0.35);
+  color: transparent;
+}

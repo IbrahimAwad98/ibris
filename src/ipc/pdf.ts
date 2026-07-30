@@ -105,6 +105,70 @@ export async function cancelRenders(requestIds: number[]): Promise<void> {
   await invoke("cancel_renders", { requestIds });
 }
 
+/** One run of text sharing a baseline; geometry in top-left-origin points. */
+export interface TextRun {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PageText {
+  runs: TextRun[];
+}
+
+export interface MatchRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SearchMatch {
+  pageIndex: number;
+  rects: MatchRect[];
+  context: string;
+}
+
+export interface OutlineNode {
+  title: string;
+  pageIndex: number | null;
+  children: OutlineNode[];
+}
+
+export async function extractText(
+  docId: number,
+  pageIndex: number,
+): Promise<PageText> {
+  return invoke<PageText>("extract_text", { docId, pageIndex });
+}
+
+/** Searches one page range; stream a document by calling successive ranges. */
+export async function searchRange(
+  docId: number,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+  fromPage: number,
+  toPage: number,
+  requestId: number,
+): Promise<SearchMatch[]> {
+  return invoke<SearchMatch[]>("search_range", {
+    docId,
+    query,
+    caseSensitive,
+    wholeWord,
+    fromPage,
+    toPage,
+    requestId,
+  });
+}
+
+export async function getOutline(docId: number): Promise<OutlineNode[]> {
+  return invoke<OutlineNode[]>("get_outline", { docId });
+}
+
 export async function closeDocument(docId: number): Promise<void> {
   await invoke("close_document", { docId });
 }
