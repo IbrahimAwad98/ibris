@@ -206,9 +206,10 @@ export function PageList() {
   const viewportW = el?.clientWidth ?? 0;
   const viewportH = el?.clientHeight ?? 0;
 
+  const effectiveWidth = Math.max(innerWidth, viewportW);
   const views = [];
   for (let i = range.start; i <= range.end && i < pages.length; i++) {
-    const left = Math.max(PAGE_GAP, (innerWidth - dispSizes[i].width) / 2);
+    const left = Math.max(PAGE_GAP, (effectiveWidth - dispSizes[i].width) / 2);
     views.push(
       <PageView
         key={i}
