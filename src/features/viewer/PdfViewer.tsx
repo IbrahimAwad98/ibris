@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useViewerStore } from "../../state/viewer-store";
 import { PageList } from "./PageList";
+import { Toolbar } from "./Toolbar";
 
 /** Document host: drag-drop / path entry until a document is open. */
 export function PdfViewer() {
@@ -30,7 +31,16 @@ export function PdfViewer() {
     };
   }, [openPath]);
 
-  if (docId !== null) return <PageList />;
+  if (docId !== null) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <Toolbar />
+        <div data-viewer-area style={{ position: "relative", flex: 1 }}>
+          <PageList />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
