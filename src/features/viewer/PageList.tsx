@@ -31,9 +31,12 @@ export function PageList() {
   const lastScroll = useRef({ left: 0, top: 0 });
   const prevScale = useRef(scale);
 
-  const state = useViewerStore.getState();
   const rotations = useMemo(
-    () => pages.map((_, i) => pageRotation({ ...state, rotationDoc, rotationByPage }, i)),
+    () =>
+      pages.map(
+        (_, i) =>
+          (((rotationDoc + (rotationByPage[i] ?? 0)) % 360) as 0 | 90 | 180 | 270),
+      ),
     [pages, rotationDoc, rotationByPage],
   );
   const dispSizes = useMemo(
@@ -155,6 +158,22 @@ export function PageList() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setScale]);
+
+  // Navigation requests (thumbnails, outline, search) land here.
+  const scrollTarget = useViewerStore((s) => s.scrollTarget);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !scrollTarget) return;
+    const { page, yPt } = scrollTarget;
+    if (page < 0 || page >= offsets.length) return;
+    const withinPage =
+      yPt !== undefined && rotations[page] === 0 ? yPt * scale : 0;
+    el.scrollTop = Math.max(
+      0,
+      offsets[page] + withinPage - (yPt !== undefined ? el.clientHeight / 3 : 0),
+    );
+    update();
+  }, [scrollTarget, offsets, rotations, scale, update]);
 
   // Apply the anchored scroll correction after a scale change, before paint.
   useLayoutEffect(() => {

@@ -6,9 +6,11 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
 use super::engine::{
-    DocumentInfo, EngineHandle, EngineMsg, RenderRequest, RenderedPage, TileRect, TileRequest,
+    DocumentInfo, EngineHandle, EngineMsg, OutlineNode, RenderRequest, RenderedPage, TileRect,
+    TileRequest,
 };
 use super::error::PdfError;
+use super::text::{PageText, SearchMatch};
 
 /// Async facade over the engine thread plus the cancellation registry.
 /// Lives in Tauri managed state; all methods are cheap — the PDF work
@@ -100,6 +102,69 @@ impl PdfService {
             cancels.remove(&request_id);
         }
         result
+    }
+
+    /// Extracts baseline-grouped text runs for one page.
+    pub async fn extract_text(&self, doc_id: u64, page_index: u16) -> Result<PageText, PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::ExtractText {
+            doc_id,
+            page_index,
+            reply,
+        })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the text request".into(),
+        })?
+    }
+
+    /// Searches one page range. Cancellable via `request_id` like renders;
+    /// the caller streams a whole document as successive ranges.
+    #[allow(clippy::too_many_arguments)] // mirrors the wire format
+    pub async fn search(
+        &self,
+        doc_id: u64,
+        query: String,
+        case_sensitive: bool,
+        whole_word: bool,
+        from_page: u16,
+        to_page: u16,
+        request_id: u64,
+    ) -> Result<Vec<SearchMatch>, PdfError> {
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.lock_cancels()?.insert(request_id, cancel.clone());
+
+        let (reply, rx) = oneshot::channel();
+        let sent = EngineHandle::global().send(EngineMsg::Search {
+            doc_id,
+            query,
+            case_sensitive,
+            whole_word,
+            from_page,
+            to_page,
+            cancel,
+            reply,
+        });
+
+        let result = match sent {
+            Ok(()) => rx.await.unwrap_or(Err(PdfError::Internal {
+                detail: "engine dropped the search request".into(),
+            })),
+            Err(e) => Err(e),
+        };
+
+        if let Ok(mut cancels) = self.cancels.lock() {
+            cancels.remove(&request_id);
+        }
+        result
+    }
+
+    /// Returns the document's bookmark tree; empty when there is none.
+    pub async fn outline(&self, doc_id: u64) -> Result<Vec<OutlineNode>, PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::Outline { doc_id, reply })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the outline request".into(),
+        })?
     }
 
     /// Flags a queued render as abandoned. A request that already started

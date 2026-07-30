@@ -4,9 +4,10 @@ use serde::Serialize;
 use tauri::ipc::Response;
 use tauri::State;
 
-use crate::pdf::engine::{DocumentInfo, TileRect};
+use crate::pdf::engine::{DocumentInfo, OutlineNode, TileRect};
 use crate::pdf::error::PdfError;
 use crate::pdf::service::PdfService;
+use crate::pdf::text::{PageText, SearchMatch};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +84,48 @@ pub async fn cancel_renders(
     request_ids: Vec<u64>,
 ) -> Result<(), PdfError> {
     state.cancel_many(&request_ids)
+}
+
+#[tauri::command]
+pub async fn extract_text(
+    state: State<'_, PdfService>,
+    doc_id: u64,
+    page_index: u16,
+) -> Result<PageText, PdfError> {
+    state.extract_text(doc_id, page_index).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // mirrors the wire format
+pub async fn search_range(
+    state: State<'_, PdfService>,
+    doc_id: u64,
+    query: String,
+    case_sensitive: bool,
+    whole_word: bool,
+    from_page: u16,
+    to_page: u16,
+    request_id: u64,
+) -> Result<Vec<SearchMatch>, PdfError> {
+    state
+        .search(
+            doc_id,
+            query,
+            case_sensitive,
+            whole_word,
+            from_page,
+            to_page,
+            request_id,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn get_outline(
+    state: State<'_, PdfService>,
+    doc_id: u64,
+) -> Result<Vec<OutlineNode>, PdfError> {
+    state.outline(doc_id).await
 }
 
 #[tauri::command]
