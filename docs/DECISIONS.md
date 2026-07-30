@@ -89,3 +89,41 @@ is a feature.
 
 **Cost:** No usage data to guide prioritisation. Bug reports must come through
 GitHub issues.
+
+---
+
+## 006 — PDFium binary from bblanchon/pdfium-binaries, pinned, non-V8
+
+**Decided:** The Windows PDFium DLL comes from the bblanchon/pdfium-binaries
+GitHub releases, pinned to an exact release tag in `scripts/get-pdfium.ps1`
+(currently `chromium/7961`), using the non-V8 build.
+
+**Alternatives:** Building PDFium from Chromium source (a multi-hour, multi-GB
+toolchain of its own); the V8-enabled build; an unpinned "latest" download.
+
+**Why:** The bblanchon builds are automated, unmodified, widely used, and what
+`pdfium-render` documents. Pinning makes the fetch reproducible and keeps
+future golden-image render tests stable. Non-V8 means no JavaScript engine:
+Ibris never executes PDF JavaScript, and the smaller binary is a smaller
+attack surface.
+
+**Cost:** Trusting a third-party build pipeline rather than Google's own
+artefacts (Google does not publish official prebuilt PDFium binaries).
+Version bumps are manual.
+
+---
+
+## 007 — Zlib and Unicode-3.0 added to the licence allow list
+
+**Decided:** `deny.toml` allows Zlib and Unicode-3.0 in addition to the five
+families named in CLAUDE.md (MIT, Apache-2.0, BSD, ISC, MPL-2.0).
+
+**Why:** Unavoidable in practice — `zlib-rs`/`miniz_oxide` (Zlib) and ICU
+components (Unicode-3.0) sit under the standard Rust PNG/Unicode stacks.
+Both are permissive, GPL-compatible, attribution-style licences with no
+copyleft obligations, consistent with the intent of decision 003. The
+NCSA-licensed AVIF stack, by contrast, was avoided by disabling the `image`
+crate's default features rather than widening the list further.
+
+**Cost:** The allow list and CLAUDE.md's shorthand now differ slightly; the
+list in `deny.toml` is authoritative.
