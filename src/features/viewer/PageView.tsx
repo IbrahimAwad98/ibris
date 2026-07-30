@@ -56,30 +56,40 @@ export function PageView({
   const disp = displaySize(pagePt, scale, rotation);
   const preview = useViewerStore((s) => s.previews.get(pageIndex));
 
+  // Effects depend on these primitives, not the freshly-derived objects
+  // above — object identities change every render and would re-run them.
+  const { width: unrotW, height: unrotH } = unrot;
+  const { x: viewX, y: viewY, width: viewW, height: viewH } = viewRect;
+
   // Reset pass: runs when the canvas identity changes (scale/doc/page).
   // Setting width/height clears the canvas; start from the preview.
   useLayoutEffect(() => {
     drawnTiles.current.clear();
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    drawUnderlay(ctx, unrot, useViewerStore.getState().previews.get(pageIndex));
-  }, [docId, pageIndex, scale, unrot.width, unrot.height]);
+    drawUnderlay(ctx, unrotW, unrotH, useViewerStore.getState().previews.get(pageIndex));
+  }, [docId, pageIndex, scale, unrotW, unrotH]);
 
   // A preview arriving late only fills a canvas that has no tiles yet.
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
     if (ctx && preview && drawnTiles.current.size === 0) {
-      drawUnderlay(ctx, unrot, preview);
+      drawUnderlay(ctx, unrotW, unrotH, preview);
     }
-  }, [preview, unrot.width, unrot.height]);
+  }, [preview, unrotW, unrotH]);
 
   // Tile pass: request what the viewport needs, cancel what it no longer does.
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
 
-    const pageRect = displayRectToPageRect(viewRect, pagePt, scale, rotation);
-    const needed = visibleTiles(unrot, pageRect);
+    const pageRect = displayRectToPageRect(
+      { x: viewX, y: viewY, width: viewW, height: viewH },
+      pagePt,
+      scale,
+      rotation,
+    );
+    const needed = visibleTiles({ width: unrotW, height: unrotH }, pageRect);
     const neededKeys = new Set(
       needed.map((t) => tileKey(docId, pageIndex, scale, t.tx, t.ty)),
     );
@@ -130,7 +140,7 @@ export function PageView({
         })
         .catch(() => clearInFlight(key));
     }
-  }, [docId, pageIndex, scale, rotation, viewRect.x, viewRect.y, viewRect.width, viewRect.height]);
+  }, [docId, pageIndex, scale, rotation, pagePt, viewX, viewY, viewW, viewH, unrotW, unrotH]);
 
   // Unmount: abandon anything still queued for this page, at any scale.
   useEffect(() => {
@@ -178,14 +188,15 @@ export function PageView({
 
 function drawUnderlay(
   ctx: CanvasRenderingContext2D,
-  unrot: Size,
+  width: number,
+  height: number,
   preview: ImageBitmap | undefined,
 ) {
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, unrot.width, unrot.height);
+  ctx.fillRect(0, 0, width, height);
   if (preview) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(preview, 0, 0, unrot.width, unrot.height);
+    ctx.drawImage(preview, 0, 0, width, height);
   }
 }
