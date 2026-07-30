@@ -57,12 +57,35 @@ pub struct RenderRequest {
     pub reply: oneshot::Sender<Result<RenderedPage, PdfError>>,
 }
 
+/// A tile of a page in device pixels at a given scale. `x`/`y` are the
+/// tile's top-left corner in the scaled page's coordinate space.
+#[derive(Debug, Clone, Copy)]
+pub struct TileRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// Like [`RenderRequest`], but for one tile of a page instead of the whole
+/// page. Rotation is deliberately absent: the frontend renders rotation as a
+/// CSS transform, so the engine only ever rasterises unrotated pages.
+pub struct TileRequest {
+    pub doc_id: u64,
+    pub page_index: u16,
+    pub scale: f32,
+    pub rect: TileRect,
+    pub cancel: Arc<AtomicBool>,
+    pub reply: oneshot::Sender<Result<RenderedPage, PdfError>>,
+}
+
 pub enum EngineMsg {
     Open {
         path: PathBuf,
         reply: oneshot::Sender<Result<(u64, DocumentInfo), PdfError>>,
     },
     Render(RenderRequest),
+    RenderTile(TileRequest),
     Close {
         doc_id: u64,
     },
@@ -155,6 +178,19 @@ fn engine_main(rx: mpsc::Receiver<EngineMsg>) {
                     .and_then(|doc| render_one(doc, req.page_index, req.scale));
                 let _ = req.reply.send(result);
             }
+            EngineMsg::RenderTile(req) => {
+                if req.cancel.load(Ordering::Relaxed) {
+                    let _ = req.reply.send(Err(PdfError::Cancelled));
+                    continue;
+                }
+                let result = docs
+                    .get(&req.doc_id)
+                    .ok_or_else(|| PdfError::Internal {
+                        detail: format!("unknown document id {}", req.doc_id),
+                    })
+                    .and_then(|doc| render_tile(doc, req.page_index, req.scale, req.rect));
+                let _ = req.reply.send(result);
+            }
             EngineMsg::Close { doc_id } => {
                 docs.remove(&doc_id);
             }
@@ -193,19 +229,57 @@ fn open_one(
     Ok((id, info))
 }
 
+/// Renders one tile of a page: the region `rect` of the page as it would
+/// appear scaled by `scale`, into a tile-sized bitmap. Regions past the page
+/// edge come back as the white clear colour, so callers may request the full
+/// tile grid without edge-clamping.
+fn render_tile(
+    document: &PdfDocument<'_>,
+    page_index: u16,
+    scale: f32,
+    rect: TileRect,
+) -> Result<RenderedPage, PdfError> {
+    if rect.width <= 0 || rect.height <= 0 {
+        return Err(PdfError::Internal {
+            detail: format!("degenerate tile rect {rect:?}"),
+        });
+    }
+    let page = document.pages().get(page_index.into())?;
+    let mut bitmap = PdfBitmap::empty(rect.width, rect.height, PdfBitmapFormat::BGRA)?;
+    let config = PdfRenderConfig::new()
+        .scale_page_by_factor(scale)
+        .set_origin(-rect.x, -rect.y);
+    page.render_into_bitmap_with_config(&mut bitmap, &config)?;
+    Ok(RenderedPage {
+        width: rect.width as u32,
+        height: rect.height as u32,
+        rgba: bitmap.as_rgba_bytes(),
+    })
+}
+
+/// Whole-page render, implemented as a full-page tile so that page renders
+/// and tile renders share one PDFium pipeline — the two pipelines
+/// (`render_with_config` vs `render_into_bitmap` + origin) produce subtly
+/// different rasterisation, which would make tiles visibly seam against
+/// whole-page output.
 fn render_one(
     document: &PdfDocument<'_>,
     page_index: u16,
     scale: f32,
 ) -> Result<RenderedPage, PdfError> {
     let page = document.pages().get(page_index.into())?;
-    let bitmap = page.render_with_config(&PdfRenderConfig::new().scale_page_by_factor(scale))?;
-    let width = bitmap.width() as u32;
-    let height = bitmap.height() as u32;
-    let rgba = bitmap.as_rgba_bytes();
-    Ok(RenderedPage {
-        width,
-        height,
-        rgba,
-    })
+    let width = (page.width().value * scale).round().max(1.0) as i32;
+    let height = (page.height().value * scale).round().max(1.0) as i32;
+    drop(page);
+    render_tile(
+        document,
+        page_index,
+        scale,
+        TileRect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+    )
 }

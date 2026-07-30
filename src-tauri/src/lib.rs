@@ -11,7 +11,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::pdf::open_document,
             commands::pdf::render_page,
+            commands::pdf::render_tile,
             commands::pdf::cancel_render,
+            commands::pdf::cancel_renders,
             commands::pdf::close_document,
         ])
         .run(tauri::generate_context!());

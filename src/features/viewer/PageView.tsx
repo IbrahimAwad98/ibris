@@ -1,108 +1,179 @@
-import { useEffect, useRef } from "react";
-import { cancelRender, nextRequestId, renderPage } from "../../ipc/pdf";
-import { SCALE, useViewerStore } from "../../state/viewer-store";
-import { cacheKey, sharpCache } from "./page-cache";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { nextRequestId, renderTile } from "../../ipc/pdf";
+import type { Rect, Rotation, Size } from "../../lib/coords";
+import {
+  displayRectToPageRect,
+  displaySize,
+  pageDeviceSize,
+} from "../../lib/coords";
+import { TILE_SIZE, tileKey, visibleTiles } from "../../lib/tile-range";
+import { useViewerStore } from "../../state/viewer-store";
+import {
+  clearInFlight,
+  isInFlight,
+  markInFlight,
+  sweepInFlight,
+  tileCache,
+} from "./page-cache";
 
 interface PageViewProps {
+  docId: number;
   pageIndex: number;
   top: number;
-  width: number;
-  height: number;
+  left: number;
+  pagePt: Size;
+  scale: number;
+  rotation: Rotation;
+  /** Viewport rect in display-page coordinates (may extend past the page). */
+  viewRect: Rect;
 }
 
 /**
- * One page canvas. Draws whatever is best available immediately — cached
- * sharp bitmap, else the low-res preview stretched to size — then requests
- * the sharp render and swaps it in. Leaving the visible range unmounts the
- * component, which cancels the in-flight request.
+ * One page as a tile compositor. The canvas holds the *unrotated* page at
+ * device scale; rotation is a CSS transform on the canvas so the coming
+ * text layer can share the exact same transform and never drift. The
+ * low-res preview draws first, tiles composite on top as they arrive.
  */
-export function PageView({ pageIndex, top, width, height }: PageViewProps) {
+// ponytail: the canvas covers the full page at device scale (~124 MB of GPU
+// at 800% for a letter page, 1-2 pages mounted). Swap to a viewport-sized
+// canvas if memory profiling ever objects.
+export function PageView({
+  docId,
+  pageIndex,
+  top,
+  left,
+  pagePt,
+  scale,
+  rotation,
+  viewRect,
+}: PageViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const hasSharp = useRef(false);
-  const docId = useViewerStore((s) => s.docId);
+  const drawnTiles = useRef<Set<string>>(new Set());
+
+  const unrot = pageDeviceSize(pagePt, scale);
+  const disp = displaySize(pagePt, scale, rotation);
   const preview = useViewerStore((s) => s.previews.get(pageIndex));
 
-  useEffect(() => {
-    hasSharp.current = false;
+  // Reset pass: runs when the canvas identity changes (scale/doc/page).
+  // Setting width/height clears the canvas; start from the preview.
+  useLayoutEffect(() => {
+    drawnTiles.current.clear();
     const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx || docId === null) return;
+    if (!ctx) return;
+    drawUnderlay(ctx, unrot, useViewerStore.getState().previews.get(pageIndex));
+  }, [docId, pageIndex, scale, unrot.width, unrot.height]);
 
-    const key = cacheKey(docId, pageIndex, SCALE);
-    const cached = sharpCache.get(key);
-    if (cached) {
-      ctx.putImageData(cached, 0, 0);
-      hasSharp.current = true;
-      return;
-    }
-
-    drawPlaceholder(ctx, width, height, useViewerStore.getState().previews.get(pageIndex));
-
-    let alive = true;
-    const requestId = nextRequestId();
-    renderPage(docId, pageIndex, SCALE, requestId)
-      .then((page) => {
-        const img = new ImageData(page.data, page.width, page.height);
-        sharpCache.set(key, img);
-        if (alive) {
-          ctx.putImageData(img, 0, 0);
-          hasSharp.current = true;
-        }
-      })
-      .catch(() => {
-        // Cancelled (page scrolled away) or transient — placeholder stands.
-      });
-    return () => {
-      alive = false;
-      void cancelRender(requestId).catch(() => undefined);
-    };
-  }, [docId, pageIndex, width, height]);
-
-  // A preview arriving after mount only upgrades a still-blank placeholder.
+  // A preview arriving late only fills a canvas that has no tiles yet.
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
-    if (ctx && preview && !hasSharp.current) {
-      drawImageSmooth(ctx, preview, width, height);
+    if (ctx && preview && drawnTiles.current.size === 0) {
+      drawUnderlay(ctx, unrot, preview);
     }
-  }, [preview, width, height]);
+  }, [preview, unrot.width, unrot.height]);
+
+  // Tile pass: request what the viewport needs, cancel what it no longer does.
+  useEffect(() => {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+
+    const pageRect = displayRectToPageRect(viewRect, pagePt, scale, rotation);
+    const needed = visibleTiles(unrot, pageRect);
+    const neededKeys = new Set(
+      needed.map((t) => tileKey(docId, pageIndex, scale, t.tx, t.ty)),
+    );
+
+    // Abandon queued tiles of this page+scale that scrolled out of relevance.
+    const prefix = `${docId}:${pageIndex}@${scale}/`;
+    sweepInFlight((key) => key.startsWith(prefix) && !neededKeys.has(key));
+
+    for (const t of needed) {
+      const key = tileKey(docId, pageIndex, scale, t.tx, t.ty);
+      if (drawnTiles.current.has(key)) continue;
+
+      const cached = tileCache.get(key);
+      if (cached) {
+        ctx.putImageData(cached, t.tx * TILE_SIZE, t.ty * TILE_SIZE);
+        drawnTiles.current.add(key);
+        continue;
+      }
+      if (isInFlight(key)) continue;
+
+      const requestId = nextRequestId();
+      markInFlight(key, requestId);
+      renderTile(
+        docId,
+        pageIndex,
+        scale,
+        {
+          x: t.tx * TILE_SIZE,
+          y: t.ty * TILE_SIZE,
+          width: TILE_SIZE,
+          height: TILE_SIZE,
+        },
+        requestId,
+      )
+        .then((tilePage) => {
+          clearInFlight(key);
+          const img = new ImageData(tilePage.data, tilePage.width, tilePage.height);
+          tileCache.set(key, img);
+          // Only paint if this canvas still shows the same doc/page/scale.
+          const c = canvasRef.current;
+          if (c && !drawnTiles.current.has(key)) {
+            const liveCtx = c.getContext("2d");
+            if (liveCtx) {
+              liveCtx.putImageData(img, t.tx * TILE_SIZE, t.ty * TILE_SIZE);
+              drawnTiles.current.add(key);
+            }
+          }
+        })
+        .catch(() => clearInFlight(key));
+    }
+  }, [docId, pageIndex, scale, rotation, viewRect.x, viewRect.y, viewRect.width, viewRect.height]);
+
+  // Unmount: abandon anything still queued for this page, at any scale.
+  useEffect(() => {
+    const prefix = `${docId}:${pageIndex}@`;
+    return () => sweepInFlight((key) => key.startsWith(prefix));
+  }, [docId, pageIndex]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={width}
-      height={height}
+    <div
       style={{
         position: "absolute",
         top,
-        left: "50%",
-        transform: "translateX(-50%)",
-        background: "#fff",
+        left,
+        width: disp.width,
+        height: disp.height,
         boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+        background: "#fff",
       }}
-    />
+    >
+      <canvas
+        ref={canvasRef}
+        width={unrot.width}
+        height={unrot.height}
+        style={{
+          position: "absolute",
+          left: (disp.width - unrot.width) / 2,
+          top: (disp.height - unrot.height) / 2,
+          transform: `rotate(${rotation}deg)`,
+          transformOrigin: "center",
+        }}
+      />
+    </div>
   );
 }
 
-function drawPlaceholder(
+function drawUnderlay(
   ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
+  unrot: Size,
   preview: ImageBitmap | undefined,
 ) {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, unrot.width, unrot.height);
   if (preview) {
-    drawImageSmooth(ctx, preview, width, height);
-  } else {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(preview, 0, 0, unrot.width, unrot.height);
   }
-}
-
-function drawImageSmooth(
-  ctx: CanvasRenderingContext2D,
-  bitmap: ImageBitmap,
-  width: number,
-  height: number,
-) {
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(bitmap, 0, 0, width, height);
 }
