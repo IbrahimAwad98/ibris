@@ -52,8 +52,24 @@ struct CharBox {
     baseline: f32,
 }
 
+/// Origin of the page's *visible* box (crop box, falling back to media box)
+/// in absolute page space. Char boxes are absolute, but the rendered bitmap
+/// starts at this origin — documents with a non-(0,0) box origin exist in
+/// the wild, and ignoring it offsets every rect by the origin in points.
+fn visible_box_origin(page: &PdfPage<'_>) -> (f32, f32) {
+    let boundaries = page.boundaries();
+    let rect = boundaries
+        .crop()
+        .or_else(|_| boundaries.media())
+        .map(|b| b.bounds);
+    match rect {
+        Ok(r) => (r.left().value, r.top().value),
+        Err(_) => (0.0, page.height().value),
+    }
+}
+
 fn char_boxes(page: &PdfPage<'_>) -> Vec<CharBox> {
-    let page_height = page.height().value;
+    let (box_left, box_top) = visible_box_origin(page);
     let text = match page.text() {
         Ok(t) => t,
         Err(_) => return Vec::new(),
@@ -70,10 +86,10 @@ fn char_boxes(page: &PdfPage<'_>) -> Vec<CharBox> {
         }
         boxes.push(CharBox {
             ch: c,
-            left: bounds.left().value,
-            top: page_height - bounds.top().value,
-            right: bounds.right().value,
-            bottom: page_height - bounds.bottom().value,
+            left: bounds.left().value - box_left,
+            top: box_top - bounds.top().value,
+            right: bounds.right().value - box_left,
+            bottom: box_top - bounds.bottom().value,
             baseline: origin_y.value,
         });
     }
