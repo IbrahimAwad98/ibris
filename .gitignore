@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+
+# PDFium binaries — downloaded by scripts/get-pdfium.ps1, never committed
+src-tauri/pdfium/
+
+*.log
