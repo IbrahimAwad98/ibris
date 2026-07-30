@@ -229,7 +229,7 @@ fn engine_main(rx: mpsc::Receiver<EngineMsg>) {
                 page_index,
                 reply,
             } => {
-                let result = with_page(&docs, doc_id, page_index, |page| extract_runs(page));
+                let result = with_page(&docs, doc_id, page_index, extract_runs);
                 let _ = reply.send(result);
             }
             EngineMsg::Search {
