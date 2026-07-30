@@ -1,3 +1,4 @@
+import { useUiStore } from "../../state/ui-store";
 import { pageRotation, useViewerStore } from "../../state/viewer-store";
 import { zoomIn, zoomOut, fitPageScale, fitWidthScale } from "../../lib/zoom";
 import { PAGE_GAP } from "../../state/viewer-store";
@@ -42,6 +43,8 @@ export function Toolbar() {
     setScale(target, { fitMode: mode });
   };
 
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+
   return (
     <div
       style={{
@@ -54,6 +57,9 @@ export function Toolbar() {
         userSelect: "none",
       }}
     >
+      <button style={btn} onClick={toggleSidebar} title="Toggle sidebar">
+        ☰
+      </button>
       <button style={btn} onClick={() => setScale(zoomOut(scale))} title="Zoom out (Ctrl+-)">
         −
       </button>
