@@ -1,3 +1,4 @@
+import { highlightStyle } from "../../lib/text-layer";
 import { useSearchStore } from "../../state/search-store";
 
 interface SearchHighlightsProps {
@@ -19,16 +20,16 @@ export function SearchHighlights({ pageIndex, scale }: SearchHighlightsProps) {
     if (match.pageIndex !== pageIndex) continue;
     const isCurrent = i === currentIndex;
     for (let j = 0; j < match.rects.length; j++) {
-      const r = match.rects[j];
+      const s = highlightStyle(match.rects[j], scale);
       boxes.push(
         <div
           key={`${i}-${j}`}
           style={{
             position: "absolute",
-            left: r.x * scale,
-            top: r.y * scale,
-            width: r.width * scale,
-            height: r.height * scale,
+            left: s.left,
+            top: s.top,
+            width: s.width,
+            height: s.height,
             background: isCurrent
               ? "rgba(255, 140, 0, 0.55)"
               : "rgba(255, 213, 0, 0.35)",
