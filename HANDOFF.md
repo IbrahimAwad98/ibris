@@ -1,5 +1,38 @@
 # M0 handoff
 
+## Fresh clone on a new machine (maintainer notes)
+
+Two things do not survive `git clone` and are documented nowhere else:
+
+1. **Cloning itself needs the right account.** The repo is private and this
+   machine's global git credentials default to `ibrahim-heysid`, so a plain
+   `git clone` fails with `Repository not found`. Clone with the pinned
+   identity:
+
+   ```powershell
+   git clone https://IbrahimAwad98@github.com/IbrahimAwad98/ibris.git
+   ```
+
+   If it still 404s, the credential manager cached the wrong account's token;
+   re-arm the credential helper below first, or clone via
+   `gh repo clone IbrahimAwad98/ibris` with `IbrahimAwad98` as the active
+   `gh` account.
+
+2. **The pre-push identity guard is unarmed on a fresh clone** — hooks path,
+   expected account, identity, and the gh-backed credential pin are all
+   repo-local config. Re-arm inside the clone:
+
+   ```powershell
+   git config core.hooksPath .githooks
+   git config push.expectedAccount IbrahimAwad98
+   git config user.name IbrahimAwad98
+   git config user.email 193368218+IbrahimAwad98@users.noreply.github.com
+   git config credential.helper '""'
+   git config --add credential.helper '!f() { if [ "$1" = get ]; then echo username=IbrahimAwad98; echo "password=$(gh auth token --user IbrahimAwad98)"; fi; }; f'
+   ```
+
+   Until this is done, `git push` skips the account check entirely.
+
 Branch: `feat/m0-toolchain` (CLAUDE.md forbids committing to main). Not pushed,
 per your instructions. Review with `git log --oneline main..feat/m0-toolchain`.
 
