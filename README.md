@@ -48,6 +48,8 @@ opens the app window.
 npm run dev              # Run the app in development
 npm run build            # Production build
 npm run typecheck        # tsc --noEmit
+npm run lint             # ESLint
+npm test                 # Vitest (frontend)
 
 cargo test               # Rust tests (run from src-tauri/)
 cargo clippy -- -D warnings
@@ -55,7 +57,21 @@ cargo fmt
 cargo deny check licenses
 ```
 
-`npm run lint` and `npm test` are not wired up yet (coming in M1).
+## Reclaiming disk space
+
+Rust builds accumulate roughly 10 GB of artifacts. When disk space runs low:
+
+```powershell
+powershell -File scripts/clean-dev.ps1          # dry run: shows what would go
+powershell -File scripts/clean-dev.ps1 -Force   # actually delete safe targets
+```
+
+The default targets are pure build output (the Cargo target directory, Vite
+cache, `dist/`) — nothing that costs more than a rebuild. Add `-All` to also
+include the shared Cargo registry, the npm cache, and `node_modules`, which
+are cheap to re-download but affect other projects or need the network. The
+script validates every path before touching it, never deletes git-tracked
+files, and never touches the PDFium binary or the toolchain.
 
 ## Architecture
 
