@@ -21,6 +21,7 @@ use serde::Serialize;
 use tokio::sync::oneshot;
 
 use super::error::PdfError;
+use super::text::{extract_runs, search_page, PageText, SearchMatch};
 
 /// Width/height of a page in PDF points (1/72 inch), bottom-left origin.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -79,6 +80,16 @@ pub struct TileRequest {
     pub reply: oneshot::Sender<Result<RenderedPage, PdfError>>,
 }
 
+/// A bookmark tree node. `page_index` is `None` for bookmarks without a
+/// resolvable destination.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutlineNode {
+    pub title: String,
+    pub page_index: Option<u16>,
+    pub children: Vec<OutlineNode>,
+}
+
 pub enum EngineMsg {
     Open {
         path: PathBuf,
@@ -86,6 +97,28 @@ pub enum EngineMsg {
     },
     Render(RenderRequest),
     RenderTile(TileRequest),
+    ExtractText {
+        doc_id: u64,
+        page_index: u16,
+        reply: oneshot::Sender<Result<PageText, PdfError>>,
+    },
+    /// Searches one bounded page range; the caller streams the whole
+    /// document by sending successive ranges, so long documents never
+    /// monopolise the engine queue.
+    Search {
+        doc_id: u64,
+        query: String,
+        case_sensitive: bool,
+        whole_word: bool,
+        from_page: u16,
+        to_page: u16,
+        cancel: Arc<AtomicBool>,
+        reply: oneshot::Sender<Result<Vec<SearchMatch>, PdfError>>,
+    },
+    Outline {
+        doc_id: u64,
+        reply: oneshot::Sender<Result<Vec<OutlineNode>, PdfError>>,
+    },
     Close {
         doc_id: u64,
     },
@@ -191,10 +224,104 @@ fn engine_main(rx: mpsc::Receiver<EngineMsg>) {
                     .and_then(|doc| render_tile(doc, req.page_index, req.scale, req.rect));
                 let _ = req.reply.send(result);
             }
+            EngineMsg::ExtractText {
+                doc_id,
+                page_index,
+                reply,
+            } => {
+                let result = with_page(&docs, doc_id, page_index, |page| extract_runs(page));
+                let _ = reply.send(result);
+            }
+            EngineMsg::Search {
+                doc_id,
+                query,
+                case_sensitive,
+                whole_word,
+                from_page,
+                to_page,
+                cancel,
+                reply,
+            } => {
+                if cancel.load(Ordering::Relaxed) {
+                    let _ = reply.send(Err(PdfError::Cancelled));
+                    continue;
+                }
+                let result = docs
+                    .get(&doc_id)
+                    .ok_or_else(|| PdfError::Internal {
+                        detail: format!("unknown document id {doc_id}"),
+                    })
+                    .map(|doc| {
+                        let mut matches = Vec::new();
+                        for page_index in from_page..=to_page {
+                            if cancel.load(Ordering::Relaxed) {
+                                break; // return what we have; caller re-queries
+                            }
+                            if let Ok(page) = doc.pages().get(page_index.into()) {
+                                matches.extend(search_page(
+                                    &page,
+                                    page_index,
+                                    &query,
+                                    case_sensitive,
+                                    whole_word,
+                                ));
+                            }
+                        }
+                        matches
+                    });
+                let _ = reply.send(result);
+            }
+            EngineMsg::Outline { doc_id, reply } => {
+                let result = docs
+                    .get(&doc_id)
+                    .ok_or_else(|| PdfError::Internal {
+                        detail: format!("unknown document id {doc_id}"),
+                    })
+                    .map(outline_of);
+                let _ = reply.send(result);
+            }
             EngineMsg::Close { doc_id } => {
                 docs.remove(&doc_id);
             }
         }
+    }
+}
+
+fn with_page<T>(
+    docs: &HashMap<u64, PdfDocument<'static>>,
+    doc_id: u64,
+    page_index: u16,
+    f: impl FnOnce(&PdfPage<'_>) -> Result<T, PdfError>,
+) -> Result<T, PdfError> {
+    let doc = docs.get(&doc_id).ok_or_else(|| PdfError::Internal {
+        detail: format!("unknown document id {doc_id}"),
+    })?;
+    let page = doc.pages().get(page_index.into())?;
+    f(&page)
+}
+
+fn outline_of(document: &PdfDocument<'static>) -> Vec<OutlineNode> {
+    let Some(root) = document.bookmarks().root() else {
+        return Vec::new();
+    };
+    // root() is the first top-level bookmark; its siblings are the rest.
+    std::iter::once(root.clone())
+        .chain(root.iter_siblings())
+        .map(|b| outline_node(&b))
+        .collect()
+}
+
+fn outline_node(bookmark: &PdfBookmark<'_>) -> OutlineNode {
+    OutlineNode {
+        title: bookmark.title().unwrap_or_default(),
+        page_index: bookmark
+            .destination()
+            .and_then(|d| d.page_index().ok())
+            .map(|i| i as u16),
+        children: bookmark
+            .iter_direct_children()
+            .map(|c| outline_node(&c))
+            .collect(),
     }
 }
 
