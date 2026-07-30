@@ -3,7 +3,30 @@
 // container as the canvas, so these values are always in unrotated page
 // device pixels and rotation applies structurally.
 
-import type { TextRun } from "../ipc/pdf";
+import type { MatchRect, TextRun } from "../ipc/pdf";
+
+export interface OverlayRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Position of one search-highlight rect inside the page rotator, in
+ * unrotated device pixels. Geometry arrives from the engine already
+ * box-relative and top-left-origin (see pdf/text.rs), so the only job here
+ * is the linear zoom scale — rotation must never appear in this math; the
+ * rotator's shared transform applies it to highlight and text alike.
+ */
+export function highlightStyle(rect: MatchRect, scale: number): OverlayRect {
+  return {
+    left: rect.x * scale,
+    top: rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+  };
+}
 
 export interface RunStyle {
   left: number;
