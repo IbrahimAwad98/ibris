@@ -33,6 +33,8 @@ export interface ViewerState {
   rotationByPage: Readonly<Record<number, Rotation>>;
   /** Topmost visible page, kept current by PageList. */
   currentPage: number;
+  /** Pending navigation, consumed by PageList. yPt is a page-top offset in points. */
+  scrollTarget: { page: number; yPt?: number; nonce: number } | null;
   openPath: (path: string) => Promise<void>;
   close: () => Promise<void>;
   setScale: (
@@ -42,6 +44,7 @@ export interface ViewerState {
   rotateDoc: () => void;
   rotatePage: (pageIndex: number) => void;
   setCurrentPage: (pageIndex: number) => void;
+  scrollToPage: (page: number, yPt?: number) => void;
 }
 
 /** Effective rotation of a page: document rotation plus its own. */
@@ -61,6 +64,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   rotationDoc: 0,
   rotationByPage: {},
   currentPage: 0,
+  scrollTarget: null,
 
   setScale: (scale, opts) => {
     // Quantised so tile-cache keys stay stable across float drift.
@@ -85,6 +89,11 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
   setCurrentPage: (pageIndex) =>
     get().currentPage === pageIndex ? undefined : set({ currentPage: pageIndex }),
+
+  scrollToPage: (page, yPt) =>
+    set((s) => ({
+      scrollTarget: { page, yPt, nonce: (s.scrollTarget?.nonce ?? 0) + 1 },
+    })),
 
   openPath: async (path: string) => {
     const previous = get().docId;
