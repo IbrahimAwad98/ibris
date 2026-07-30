@@ -150,3 +150,15 @@ write brittle snapshot tests of rendered markup.
 - When a design choice has real trade-offs, state them and pick one — do not ask
   the user to choose between options you can evaluate yourself.
 - If a request conflicts with a hard rule above, say so instead of working around it.
+
+---
+
+## Disk hygiene
+
+Rust build artifacts live in `D:\cargo-target` (set via `CARGO_TARGET_DIR`). It
+grows to roughly 10 GB after a full build.
+
+At the end of any milestone, after the final verification passes and the work
+is committed, report the size of `D:\cargo-target` and free space on `D:`. If
+free space is under 20 GB, say so and recommend clearing it. Never delete it
+yourself without asking — a rebuild costs several minutes.

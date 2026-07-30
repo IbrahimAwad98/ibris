@@ -7,12 +7,17 @@ import {
   type PageSizePt,
 } from "../ipc/pdf";
 
-/** Hardcoded zoom for M1a: 1 PDF point → 1.5 canvas pixels. */
-export const SCALE = 1.5;
+import type { Rotation } from "../lib/coords";
+import { clampScale } from "../lib/zoom";
+
 /** Gap between pages in layout pixels. */
 export const PAGE_GAP = 16;
 /** Preview bitmaps are this many pixels wide regardless of page size. */
 const PREVIEW_WIDTH_PX = 108;
+/** Initial zoom before any fit mode is chosen. */
+export const DEFAULT_SCALE = 1.5;
+
+export type FitMode = "width" | "page" | null;
 
 export interface ViewerState {
   docId: number | null;
@@ -20,8 +25,29 @@ export interface ViewerState {
   /** Low-res page bitmaps, kept for the lifetime of the document. */
   previews: ReadonlyMap<number, ImageBitmap>;
   error: string | null;
+  scale: number;
+  fitMode: FitMode;
+  /** Anchor (viewport coords) for the pending scale change; consumed by PageList. */
+  zoomAnchor: { x: number; y: number } | null;
+  rotationDoc: Rotation;
+  rotationByPage: Readonly<Record<number, Rotation>>;
+  /** Topmost visible page, kept current by PageList. */
+  currentPage: number;
   openPath: (path: string) => Promise<void>;
   close: () => Promise<void>;
+  setScale: (
+    scale: number,
+    opts?: { fitMode?: FitMode; anchor?: { x: number; y: number } },
+  ) => void;
+  rotateDoc: () => void;
+  rotatePage: (pageIndex: number) => void;
+  setCurrentPage: (pageIndex: number) => void;
+}
+
+/** Effective rotation of a page: document rotation plus its own. */
+export function pageRotation(state: ViewerState, pageIndex: number): Rotation {
+  return ((state.rotationDoc + (state.rotationByPage[pageIndex] ?? 0)) %
+    360) as Rotation;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -29,13 +55,52 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   pages: [],
   previews: new Map<number, ImageBitmap>(),
   error: null,
+  scale: DEFAULT_SCALE,
+  fitMode: null,
+  zoomAnchor: null,
+  rotationDoc: 0,
+  rotationByPage: {},
+  currentPage: 0,
+
+  setScale: (scale, opts) => {
+    // Quantised so tile-cache keys stay stable across float drift.
+    const next = Math.round(clampScale(scale) * 10000) / 10000;
+    set({
+      scale: next,
+      fitMode: opts?.fitMode ?? null,
+      zoomAnchor: opts?.anchor ?? null,
+    });
+  },
+
+  rotateDoc: () =>
+    set((s) => ({ rotationDoc: ((s.rotationDoc + 90) % 360) as Rotation })),
+
+  rotatePage: (pageIndex) =>
+    set((s) => ({
+      rotationByPage: {
+        ...s.rotationByPage,
+        [pageIndex]: (((s.rotationByPage[pageIndex] ?? 0) + 90) % 360) as Rotation,
+      },
+    })),
+
+  setCurrentPage: (pageIndex) =>
+    get().currentPage === pageIndex ? undefined : set({ currentPage: pageIndex }),
 
   openPath: async (path: string) => {
     const previous = get().docId;
     if (previous !== null) {
       await closeDocument(previous).catch(() => undefined);
     }
-    set({ docId: null, pages: [], previews: new Map(), error: null });
+    set({
+      docId: null,
+      pages: [],
+      previews: new Map(),
+      error: null,
+      rotationDoc: 0,
+      rotationByPage: {},
+      currentPage: 0,
+      zoomAnchor: null,
+    });
 
     let doc;
     try {
@@ -71,7 +136,16 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
   close: async () => {
     const { docId } = get();
-    set({ docId: null, pages: [], previews: new Map(), error: null });
+    set({
+      docId: null,
+      pages: [],
+      previews: new Map(),
+      error: null,
+      rotationDoc: 0,
+      rotationByPage: {},
+      currentPage: 0,
+      zoomAnchor: null,
+    });
     if (docId !== null) {
       await closeDocument(docId).catch(() => undefined);
     }
