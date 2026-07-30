@@ -156,6 +156,22 @@ export function PageList() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setScale]);
 
+  // Navigation requests (thumbnails, outline, search) land here.
+  const scrollTarget = useViewerStore((s) => s.scrollTarget);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !scrollTarget) return;
+    const { page, yPt } = scrollTarget;
+    if (page < 0 || page >= offsets.length) return;
+    const withinPage =
+      yPt !== undefined && rotations[page] === 0 ? yPt * scale : 0;
+    el.scrollTop = Math.max(
+      0,
+      offsets[page] + withinPage - (yPt !== undefined ? el.clientHeight / 3 : 0),
+    );
+    update();
+  }, [scrollTarget, offsets, rotations, scale, update]);
+
   // Apply the anchored scroll correction after a scale change, before paint.
   useLayoutEffect(() => {
     const el = containerRef.current;
