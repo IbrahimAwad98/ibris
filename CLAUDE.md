@@ -114,6 +114,12 @@ Before proposing a change as complete, run: `npm run typecheck`, `npm run lint`,
 - React components: `PascalCase`
 - Rust: standard `snake_case` / `PascalCase`
 
+**Icons**
+- Application icons are generated from the SVG masters in `assets/logo/` via
+  `scripts/gen-icons.py` and are never hand-edited.
+- Do not run `npm run tauri icon` — it derives every size from one image and
+  loses the simplified small-size variant used below 48 px.
+
 ---
 
 ## Testing
