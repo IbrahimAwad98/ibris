@@ -6,3 +6,6 @@ target/
 src-tauri/pdfium/
 
 *.log
+
+# local source archive for branding assets
+ibris-logo.zip
