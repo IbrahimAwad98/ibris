@@ -1,4 +1,7 @@
-# Ibris PDF Editor
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-horizontal-dark.svg">
+  <img src="assets/logo/logo-horizontal.svg" alt="Ibris PDF" width="380">
+</picture>
 
 A fast, native-feeling PDF reader and editor for Windows, built with Tauri,
 React, and Rust on top of PDFium. MIT licensed. Ibris is at the very beginning:
