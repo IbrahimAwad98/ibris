@@ -166,6 +166,15 @@ foreach ($t in $targets) {
         continue
     }
 
+    # A present src-tauri\target is a symptom, not just space: some cargo
+    # invocation ran without CARGO_TARGET_DIR set - most likely a shell
+    # opened before the variable was configured.
+    if ($t.Path -eq (Join-Path $RepoRoot 'src-tauri\target')) {
+        Write-Warning ("src-tauri\target exists: a cargo invocation ran without " +
+            "CARGO_TARGET_DIR set (probably a shell opened before the variable " +
+            "was configured). Check any long-lived terminals.")
+    }
+
     $size = Get-DirSizeMB $t.Path
     if ($Force) {
         Remove-Item $t.Path -Recurse -Force -Confirm:$false
