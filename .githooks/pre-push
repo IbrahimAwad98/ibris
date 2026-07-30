@@ -1,0 +1,38 @@
+#!/bin/sh
+# Blocks pushes unless the active gh account matches push.expectedAccount.
+# No push.expectedAccount configured -> hook is a no-op (outside contributors).
+
+expected=$(git config --get push.expectedAccount)
+[ -z "$expected" ] && exit 0
+
+if ! command -v gh >/dev/null 2>&1; then
+    echo "pre-push: gh CLI not found; cannot verify the GitHub account." >&2
+    exit 1
+fi
+
+actual=$(gh api user --jq .login 2>/dev/null)
+if [ -z "$actual" ]; then
+    echo "pre-push: 'gh api user' failed; cannot verify the active GitHub account." >&2
+    echo "Check 'gh auth status' and your network connection." >&2
+    exit 1
+fi
+
+if [ "$actual" != "$expected" ]; then
+    echo "pre-push: push blocked." >&2
+    echo "  Active gh account: $actual" >&2
+    echo "  Expected account:  $expected" >&2
+    echo "Fix: gh auth switch --user $expected" >&2
+    exit 1
+fi
+
+local_email=$(git config --local --get user.email)
+global_email=$(git config --global --get user.email)
+if [ -z "$local_email" ] || [ "$local_email" = "$global_email" ]; then
+    echo "pre-push: push blocked. This repo has no local user.email override," >&2
+    echo "so commits would be attributed to your global identity." >&2
+    echo "Fix: git config --local user.email <email for $expected>" >&2
+    exit 1
+fi
+
+echo "pre-push: verified GitHub account $actual"
+exit 0
