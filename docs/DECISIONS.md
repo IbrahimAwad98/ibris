@@ -127,3 +127,25 @@ crate's default features rather than widening the list further.
 
 **Cost:** The allow list and CLAUDE.md's shorthand now differ slightly; the
 list in `deny.toml` is authoritative.
+
+---
+
+## 008 — All PDFium work on one engine thread
+
+**Decided:** A single process-global engine thread owns every open
+`PdfDocument` and executes every PDFium FFI call. Everything else reaches it
+through a channel (`pdf/engine.rs`).
+
+**Alternatives:** One worker thread per document (the original M1a design);
+per-document workers plus pdfium-render's `thread_safe` feature.
+
+**Why:** Both alternatives crash. With per-document workers, concurrent test
+runs died with STATUS_ACCESS_VIOLATION; adding `thread_safe` (a lock around
+each FFI call) still crashed with STATUS_ILLEGAL_INSTRUCTION under concurrent
+multi-document use. PDFium is single-threaded at heart — Chrome serialises
+all access too. A structural invariant (one thread, enforced by ownership)
+beats a lock discipline that demonstrably leaks.
+
+**Cost:** Rendering serialises across documents, not just within one. For a
+desktop viewer, effectively no cost — but if parallel multi-document
+rendering ever matters, the only real option is one process per document.
