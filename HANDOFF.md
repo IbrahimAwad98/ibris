@@ -1,5 +1,14 @@
 # M0 handoff
 
+## Build directory location
+
+`CARGO_TARGET_DIR=D:\cargo-target` is set as a **user-level environment
+variable on this machine** — Rust build artifacts (~6–10 GB) land there, not
+in `src-tauri/target/`, so they can be cleared any time without touching the
+repo. A fresh clone on another machine without this variable builds into
+`src-tauri/target/` as normal (still gitignored). New shells pick the
+variable up automatically; long-lived shells opened before it was set won't.
+
 ## Fresh clone on a new machine (maintainer notes)
 
 Two things do not survive `git clone` and are documented nowhere else:
