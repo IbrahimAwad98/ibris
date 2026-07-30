@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::oneshot;
 
-use super::engine::{DocumentInfo, EngineHandle, EngineMsg, RenderRequest, RenderedPage};
+use super::engine::{
+    DocumentInfo, EngineHandle, EngineMsg, RenderRequest, RenderedPage, TileRect, TileRequest,
+};
 use super::error::PdfError;
 
 /// Async facade over the engine thread plus the cancellation registry.
@@ -65,11 +67,58 @@ impl PdfService {
         result
     }
 
+    /// Renders one tile of a page. Same cancellation contract as `render`.
+    pub async fn render_tile(
+        &self,
+        doc_id: u64,
+        page_index: u16,
+        scale: f32,
+        rect: TileRect,
+        request_id: u64,
+    ) -> Result<RenderedPage, PdfError> {
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.lock_cancels()?.insert(request_id, cancel.clone());
+
+        let (reply, rx) = oneshot::channel();
+        let sent = EngineHandle::global().send(EngineMsg::RenderTile(TileRequest {
+            doc_id,
+            page_index,
+            scale,
+            rect,
+            cancel,
+            reply,
+        }));
+
+        let result = match sent {
+            Ok(()) => rx.await.unwrap_or(Err(PdfError::Internal {
+                detail: "engine dropped the tile request".into(),
+            })),
+            Err(e) => Err(e),
+        };
+
+        if let Ok(mut cancels) = self.cancels.lock() {
+            cancels.remove(&request_id);
+        }
+        result
+    }
+
     /// Flags a queued render as abandoned. A request that already started
     /// rendering completes anyway; its result is simply unused.
     pub fn cancel(&self, request_id: u64) -> Result<(), PdfError> {
         if let Some(flag) = self.lock_cancels()?.get(&request_id) {
             flag.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    /// Batch cancel: one sweep for a page's worth of stale tiles (or the
+    /// whole in-flight set on a zoom change) instead of one IPC per request.
+    pub fn cancel_many(&self, request_ids: &[u64]) -> Result<(), PdfError> {
+        let cancels = self.lock_cancels()?;
+        for id in request_ids {
+            if let Some(flag) = cancels.get(id) {
+                flag.store(true, Ordering::Relaxed);
+            }
         }
         Ok(())
     }
