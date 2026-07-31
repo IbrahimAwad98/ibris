@@ -8,7 +8,10 @@ import {
   useDocumentStore,
 } from "./document-store";
 
-function makeNote(id: string, contents = "hello"): Annotation {
+function makeNote(
+  id: string,
+  contents = "hello",
+): Extract<Annotation, { kind: "note" }> {
   return {
     id,
     kind: "note",
