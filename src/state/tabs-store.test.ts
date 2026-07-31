@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../ipc/sidecar", () => ({
+  fileFingerprint: vi.fn().mockResolvedValue(null),
+  sidecarRead: vi.fn().mockResolvedValue(null),
+  sidecarWrite: vi.fn().mockResolvedValue(undefined),
+  sidecarDelete: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../ipc/dialog", () => ({
+  pickPdf: vi.fn().mockResolvedValue(null),
+  pickSavePath: vi.fn().mockResolvedValue(null),
+  askUser: vi.fn().mockResolvedValue(true),
+}));
 vi.mock("../ipc/pdf", () => ({
   openDocument: vi.fn(),
   renderPage: vi.fn().mockRejectedValue(new Error("no previews in tests")),
@@ -14,6 +25,7 @@ vi.mock("../ipc/pdf", () => ({
 }));
 
 import { closeDocument, openDocument, setActiveDocument } from "../ipc/pdf";
+import { addAnnotation, useDocumentStore } from "./document-store";
 import { useSearchStore } from "./search-store";
 import { useTabsStore } from "./tabs-store";
 import { useUiStore } from "./ui-store";
@@ -124,6 +136,35 @@ describe("per-tab state", () => {
     expect(useSearchStore.getState().query).toBe("alpha");
     expect(useUiStore.getState().sidebarOpen).toBe(true);
     expect(useUiStore.getState().sidebarTab).toBe("search");
+  });
+
+  it("keeps the command stack and dirty state per tab", async () => {
+    await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
+    useDocumentStore.getState().execute(
+      addAnnotation({
+        id: "n1",
+        kind: "note",
+        pageIndex: 0,
+        at: { x: 1, y: 2 },
+        contents: "per-tab",
+        color: "#ffcc00",
+        opacity: 1,
+        author: "t",
+        createdAt: 1,
+        modifiedAt: 1,
+      }),
+    );
+    expect(useDocumentStore.getState().isDirty()).toBe(true);
+
+    await useTabsStore.getState().openTab("C:\\docs\\b.pdf");
+    expect(useDocumentStore.getState().annotations["n1"]).toBeUndefined();
+    expect(useDocumentStore.getState().isDirty()).toBe(false);
+
+    useTabsStore.getState().activateTab(tabIds()[0]);
+    expect(useDocumentStore.getState().annotations["n1"]).toMatchObject({
+      contents: "per-tab",
+    });
+    expect(useDocumentStore.getState().isDirty()).toBe(true);
   });
 
   it("restores the tab's exact position via a scroll target on activation", async () => {
