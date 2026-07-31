@@ -80,6 +80,32 @@ async fn zero_origin_page_inverts_around_the_photo() {
     assert_page_inverts_correctly(0).await;
 }
 
+/// Writes side-by-side PNGs of the fixture (plain and inverted) so a human
+/// can judge the result; asserts only that the files land.
+#[tokio::test]
+async fn dumps_plain_and_inverted_pngs() {
+    let service = PdfService::new();
+    let (doc_id, _) = service
+        .open(fixture("dark-photo-charts.pdf"))
+        .await
+        .expect("open failed");
+
+    for (invert, name) in [
+        (false, "dark-fixture-plain.png"),
+        (true, "dark-fixture-inverted.png"),
+    ] {
+        let page = service
+            .render(doc_id, 0, 3.0, invert, if invert { 11 } else { 10 })
+            .await
+            .expect("render failed");
+        let img = image::RgbaImage::from_raw(page.width, page.height, page.rgba)
+            .expect("buffer size mismatch");
+        let out = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        img.save(&out).expect("failed to write PNG");
+        assert!(out.metadata().expect("PNG not written").len() > 1_000);
+    }
+}
+
 #[tokio::test]
 async fn offset_mediabox_page_inverts_around_the_photo() {
     assert_page_inverts_correctly(1).await;
