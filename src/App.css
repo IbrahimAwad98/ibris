@@ -235,6 +235,170 @@ button:focus-visible,
   color: var(--text);
 }
 
+/* ---- Annotation toolbar ------------------------------------------------ */
+
+.annot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: var(--bg-chrome);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.annot-tool {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.annot-tool:hover {
+  color: var(--text);
+}
+
+.annot-tool.active {
+  background: var(--bg-active);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.annot-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.annot-settings input[type="color"] {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.annot-settings input[type="range"] {
+  width: 80px;
+}
+
+.annot-width {
+  width: 52px;
+}
+
+.annot-width,
+.annot-author,
+.annot-settings select {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.annot-author {
+  width: 110px;
+}
+
+/* ---- Note editor ------------------------------------------------------- */
+
+.note-editor {
+  position: absolute;
+  width: 200px;
+  height: 80px;
+  background: var(--bg-chrome);
+  color: var(--text);
+  border: 1px solid var(--accent-soft);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  z-index: 5;
+}
+
+/* ---- History panel ----------------------------------------------------- */
+
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.history-row:hover {
+  background: var(--bg-active);
+}
+
+.history-row.current {
+  background: var(--bg-active);
+  box-shadow: inset 2px 0 0 var(--accent-soft);
+}
+
+.history-row.undone {
+  opacity: 0.45;
+}
+
+.history-saved {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.history-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ---- Close prompt ------------------------------------------------------ */
+
+.close-prompt {
+  padding: 18px;
+  font-size: 14px;
+}
+
+.close-prompt p {
+  margin: 0 0 14px;
+}
+
+.close-prompt-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-secondary {
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* ---- Command palette --------------------------------------------------- */
 
 .palette-backdrop {
