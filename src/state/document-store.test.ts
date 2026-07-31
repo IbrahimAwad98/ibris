@@ -5,6 +5,8 @@ import {
   MAX_STACK,
   modifyAnnotation,
   removeAnnotation,
+  rotatePages,
+  setPageOrder,
   useDocumentStore,
 } from "./document-store";
 
@@ -133,6 +135,8 @@ describe("serialisation", () => {
     useDocumentStore.getState().restore(
       {
         annotations: wire.annotations,
+        pageOrder: null,
+        rotations: {},
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,
@@ -149,6 +153,54 @@ describe("serialisation", () => {
     expect(useDocumentStore.getState().annotations["n1"]).toMatchObject({
       contents: "serialised",
     });
+  });
+});
+
+describe("page structure commands", () => {
+  it("reorders pages and undo restores order and annotations", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(3);
+    // Annotation on source page 2.
+    s().execute(addAnnotation({ ...makeNote("n1"), pageIndex: 2 }));
+    s().execute(setPageOrder([0, 1, 2], [2, 0, 1], "Move page 3 first"));
+
+    expect(s().pageOrder).toEqual([2, 0, 1]);
+    // The annotation still references source page 2 — it moved with it.
+    expect(s().annotations["n1"].pageIndex).toBe(2);
+
+    s().undo();
+    expect(s().pageOrder).toEqual([0, 1, 2]);
+    expect(s().annotations["n1"].pageIndex).toBe(2);
+  });
+
+  it("deleting a page is an order change; undo brings it back", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(3);
+    s().execute(setPageOrder([0, 1, 2], [0, 2], "Delete page 2"));
+    expect(s().pageOrder).toEqual([0, 2]);
+    s().undo();
+    expect(s().pageOrder).toEqual([0, 1, 2]);
+  });
+
+  it("rotation round-trips through undo including implicit zero", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(2);
+    s().execute(rotatePages({ 1: 0 }, { 1: 90 }, "Rotate page 2"));
+    expect(s().rotations[1]).toBe(90);
+    s().execute(rotatePages({ 1: 90 }, { 1: 180 }, "Rotate page 2"));
+    expect(s().rotations[1]).toBe(180);
+    s().undo();
+    expect(s().rotations[1]).toBe(90);
+    s().undo();
+    expect(s().rotations[1]).toBe(0);
+  });
+
+  it("initStructure never clobbers a restored order", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(3);
+    s().execute(setPageOrder([0, 1, 2], [2, 1, 0], "Reverse"));
+    s().initStructure(3);
+    expect(s().pageOrder).toEqual([2, 1, 0]);
   });
 });
 

@@ -7,7 +7,13 @@ import {
   type VisibleRange,
 } from "../../lib/visible-range";
 import { anchorScroll, fitPageScale, fitWidthScale, zoomIn, zoomOut } from "../../lib/zoom";
-import { PAGE_GAP, pageRotation, useViewerStore } from "../../state/viewer-store";
+import { useDocumentStore } from "../../state/document-store";
+import {
+  PAGE_GAP,
+  pageOrderOf,
+  pageRotation,
+  useViewerStore,
+} from "../../state/viewer-store";
 import { sweepInFlight } from "./page-cache";
 import { PageView } from "./PageView";
 
@@ -20,8 +26,8 @@ export function PageList() {
   const pages = useViewerStore((s) => s.pages);
   const scale = useViewerStore((s) => s.scale);
   const fitMode = useViewerStore((s) => s.fitMode);
-  const rotationDoc = useViewerStore((s) => s.rotationDoc);
-  const rotationByPage = useViewerStore((s) => s.rotationByPage);
+  const docOrder = useDocumentStore((s) => s.pageOrder);
+  const docRotations = useDocumentStore((s) => s.rotations);
   const setScale = useViewerStore((s) => s.setScale);
   const setCurrentPage = useViewerStore((s) => s.setCurrentPage);
 
@@ -31,17 +37,20 @@ export function PageList() {
   const lastScroll = useRef({ left: 0, top: 0 });
   const prevScale = useRef(scale);
 
-  const rotations = useMemo(
+  // View slot → source page. Identity until the document store has
+  // structure; guarded against a stale order referencing missing pages.
+  const order = useMemo(
     () =>
-      pages.map(
-        (_, i) =>
-          (((rotationDoc + (rotationByPage[i] ?? 0)) % 360) as 0 | 90 | 180 | 270),
-      ),
-    [pages, rotationDoc, rotationByPage],
+      (docOrder ?? pages.map((_, i) => i)).filter((src) => src < pages.length),
+    [docOrder, pages],
+  );
+  const rotations = useMemo(
+    () => order.map((src) => docRotations[src] ?? (0 as const)),
+    [order, docRotations],
   );
   const dispSizes = useMemo(
-    () => pages.map((p, i) => displaySize(p, scale, rotations[i])),
-    [pages, scale, rotations],
+    () => order.map((src, i) => displaySize(pages[src], scale, rotations[i])),
+    [order, pages, scale, rotations],
   );
   const heights = useMemo(() => dispSizes.map((s) => s.height), [dispSizes]);
   const offsets = useMemo(() => pageOffsets(heights, PAGE_GAP), [heights]);
@@ -157,7 +166,7 @@ export function PageList() {
     if (!el) return;
     const recompute = () => {
       const s = useViewerStore.getState();
-      const pt = s.pages[s.currentPage];
+      const pt = s.pages[pageOrderOf(s)[s.currentPage]];
       if (!pt) return;
       const rot = pageRotation(s, s.currentPage);
       const target =
@@ -174,7 +183,7 @@ export function PageList() {
     recompute();
     window.addEventListener("resize", recompute);
     return () => window.removeEventListener("resize", recompute);
-  }, [fitMode, rotationDoc, rotationByPage, setScale]);
+  }, [fitMode, rotations, setScale]);
 
   if (docId === null) return null;
 
@@ -184,16 +193,17 @@ export function PageList() {
 
   const effectiveWidth = Math.max(innerWidth, viewportW);
   const views = [];
-  for (let i = range.start; i <= range.end && i < pages.length; i++) {
+  for (let i = range.start; i <= range.end && i < order.length; i++) {
+    const src = order[i];
     const left = Math.max(PAGE_GAP, (effectiveWidth - dispSizes[i].width) / 2);
     views.push(
       <PageView
-        key={i}
+        key={src}
         docId={docId}
-        pageIndex={i}
+        pageIndex={src}
         top={offsets[i]}
         left={left}
-        pagePt={pages[i]}
+        pagePt={pages[src]}
         scale={scale}
         rotation={rotations[i]}
         viewRect={{

@@ -40,8 +40,6 @@ type ViewerSnapshot = Pick<
   | "error"
   | "scale"
   | "fitMode"
-  | "rotationDoc"
-  | "rotationByPage"
   | "currentPage"
   | "scrollYPt"
 >;
@@ -108,8 +106,6 @@ function takeSnapshot(): TabSnapshot {
       error: v.error,
       scale: v.scale,
       fitMode: v.fitMode,
-      rotationDoc: v.rotationDoc,
-      rotationByPage: v.rotationByPage,
       currentPage: v.currentPage,
       scrollYPt: v.scrollYPt,
     },
@@ -160,8 +156,6 @@ function currentSavedView(): SavedView {
   return {
     scale: v.scale,
     fitMode: v.fitMode,
-    rotationDoc: v.rotationDoc,
-    rotationByPage: { ...v.rotationByPage },
     page: v.scrollYPt?.page ?? v.currentPage,
     yPt: v.scrollYPt?.yPt ?? 0,
     sidebarOpen: u.sidebarOpen,
@@ -177,8 +171,6 @@ function applySavedView(view: SavedView): void {
   useViewerStore.setState({
     scale: view.scale,
     fitMode: view.fitMode,
-    rotationDoc: view.rotationDoc,
-    rotationByPage: view.rotationByPage,
     currentPage: page,
     scrollYPt: { page, yPt: view.yPt },
   });
@@ -199,8 +191,12 @@ async function openIntoViewer(tabId: string, path: string): Promise<void> {
       () => undefined,
     );
     if (useViewerStore.getState().docId !== null) {
-      // Fingerprint + crash-recovery sidecar for the edit state.
+      // Fingerprint + crash-recovery sidecar for the edit state, then an
+      // identity page order unless the sidecar restored a structure.
       await loadEditState(path);
+      useDocumentStore
+        .getState()
+        .initStructure(useViewerStore.getState().pages.length);
     }
   }
 }
@@ -476,9 +472,7 @@ useViewerStore.subscribe((state, prev) => {
   if (
     state.scrollYPt === prev.scrollYPt &&
     state.scale === prev.scale &&
-    state.fitMode === prev.fitMode &&
-    state.rotationDoc === prev.rotationDoc &&
-    state.rotationByPage === prev.rotationByPage
+    state.fitMode === prev.fitMode
   ) {
     return;
   }
