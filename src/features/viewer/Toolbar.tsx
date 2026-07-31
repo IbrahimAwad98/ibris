@@ -1,7 +1,6 @@
 import { useUiStore } from "../../state/ui-store";
-import { pageRotation, useViewerStore } from "../../state/viewer-store";
-import { zoomIn, zoomOut, fitPageScale, fitWidthScale } from "../../lib/zoom";
-import { PAGE_GAP } from "../../state/viewer-store";
+import { useViewerStore } from "../../state/viewer-store";
+import { fitTo, zoomInCentred, zoomOutCentred } from "./view-actions";
 
 const btn: React.CSSProperties = {
   background: "var(--bg-raised)",
@@ -13,36 +12,14 @@ const btn: React.CSSProperties = {
   fontSize: 13,
 };
 
-/** Zoom, fit, and rotation controls. Keyboard equivalents live in PageList. */
+/** Zoom, fit, and rotation controls. Keyboard equivalents live in the
+ * command registry (features/shell/commands.ts). */
 export function Toolbar() {
   const scale = useViewerStore((s) => s.scale);
   const currentPage = useViewerStore((s) => s.currentPage);
   const pageCount = useViewerStore((s) => s.pages.length);
-  const setScale = useViewerStore((s) => s.setScale);
   const rotateDoc = useViewerStore((s) => s.rotateDoc);
   const rotatePage = useViewerStore((s) => s.rotatePage);
-
-  const viewerEl = () =>
-    document.querySelector<HTMLDivElement>("[data-viewer-area]");
-
-  const fit = (mode: "width" | "page") => {
-    const el = viewerEl();
-    const s = useViewerStore.getState();
-    const pt = s.pages[s.currentPage];
-    if (!el || !pt) return;
-    const rot = pageRotation(s, s.currentPage);
-    const target =
-      mode === "width"
-        ? fitWidthScale(el.clientWidth, pt, rot, PAGE_GAP)
-        : fitPageScale(
-            { width: el.clientWidth, height: el.clientHeight },
-            pt,
-            rot,
-            PAGE_GAP,
-          );
-    setScale(target, { fitMode: mode });
-  };
-
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
 
   return (
@@ -57,22 +34,22 @@ export function Toolbar() {
         userSelect: "none",
       }}
     >
-      <button style={btn} onClick={toggleSidebar} title="Toggle sidebar">
+      <button style={btn} onClick={toggleSidebar} title="Toggle sidebar (Ctrl+B)">
         ☰
       </button>
-      <button style={btn} onClick={() => setScale(zoomOut(scale))} title="Zoom out (Ctrl+-)">
+      <button style={btn} onClick={zoomOutCentred} title="Zoom out (Ctrl+-)">
         −
       </button>
       <span style={{ minWidth: 48, textAlign: "center", fontSize: 13 }}>
         {Math.round(scale * 100)}%
       </span>
-      <button style={btn} onClick={() => setScale(zoomIn(scale))} title="Zoom in (Ctrl+=)">
+      <button style={btn} onClick={zoomInCentred} title="Zoom in (Ctrl+=)">
         +
       </button>
-      <button style={btn} onClick={() => fit("width")} title="Fit width (Ctrl+2)">
+      <button style={btn} onClick={() => fitTo("width")} title="Fit width (Ctrl+1)">
         Fit width
       </button>
-      <button style={btn} onClick={() => fit("page")} title="Fit page (Ctrl+0)">
+      <button style={btn} onClick={() => fitTo("page")} title="Fit page (Ctrl+2)">
         Fit page
       </button>
       <div
