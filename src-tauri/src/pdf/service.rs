@@ -42,6 +42,7 @@ impl PdfService {
         doc_id: u64,
         page_index: u16,
         scale: f32,
+        invert: bool,
         request_id: u64,
     ) -> Result<RenderedPage, PdfError> {
         let cancel = Arc::new(AtomicBool::new(false));
@@ -52,6 +53,7 @@ impl PdfService {
             doc_id,
             page_index,
             scale,
+            invert,
             cancel,
             reply,
         }));
@@ -70,12 +72,14 @@ impl PdfService {
     }
 
     /// Renders one tile of a page. Same cancellation contract as `render`.
+    #[allow(clippy::too_many_arguments)] // mirrors the wire format
     pub async fn render_tile(
         &self,
         doc_id: u64,
         page_index: u16,
         scale: f32,
         rect: TileRect,
+        invert: bool,
         request_id: u64,
     ) -> Result<RenderedPage, PdfError> {
         let cancel = Arc::new(AtomicBool::new(false));
@@ -87,6 +91,7 @@ impl PdfService {
             page_index,
             scale,
             rect,
+            invert,
             cancel,
             reply,
         }));

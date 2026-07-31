@@ -199,3 +199,30 @@ instantly re-prioritises everything already queued.
 **Cost:** O(n) scan per dequeue, bounded by queue depth (a viewport of
 tiles plus a preview pass per tab). Background documents can be starved
 while the visible one has work — exactly the intended behaviour.
+
+---
+
+## 011 — Dark-mode pages: engine bitmap post-pass, not CSS
+
+**Decided:** Dark mode inverts the rendered page bitmap in Rust
+(`pdf/dark.rs`): RGB → HSL, lightness flipped, hue/saturation kept, and the
+device-pixel rects of embedded image objects skipped entirely. An `invert`
+flag rides every render/tile request; frontend tile-cache keys carry the
+bit, so a theme switch is just a cache miss.
+
+**Alternatives:** CSS `filter: invert(1)` on the canvas (turns photos into
+negatives, shifts every hue); CSS `invert(1) hue-rotate(180deg)` (repairs
+hue but still negates photos and washes out saturated colour); PDFium's
+`FPDF_RENDER_REVERSE_BYTE_ORDER`-style colour-scheme APIs (not exposed by
+pdfium-render, and forced-colour rendering loses colour semantics rather
+than flipping luminance).
+
+**Why:** Only a per-pixel pass can both preserve hue and leave photographs
+positive, and only the engine knows where image objects sit on the page.
+Cost lands off the UI thread, and the invert bit in the cache key means no
+special-case invalidation anywhere.
+
+**Cost:** Roughly doubles per-tile CPU in dark mode (HSL round trip per
+pixel) and re-renders everything on theme switch. Images nested inside Form
+XObjects are not detected and will be inverted — recurse into form objects
+if such a document shows up.

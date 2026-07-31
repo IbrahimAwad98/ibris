@@ -41,13 +41,15 @@ export function visibleTiles(
   return tiles;
 }
 
-/** Cache / in-flight key for one tile. Scale is part of the identity. */
+/** Cache / in-flight key for one tile. Scale and the dark-mode invert bit
+ * are part of the identity, so a theme switch simply misses the cache. */
 export function tileKey(
   docId: number,
   pageIndex: number,
   scale: number,
+  invert: boolean,
   tx: number,
   ty: number,
 ): string {
-  return `${docId}:${pageIndex}@${scale}/${tx},${ty}`;
+  return `${docId}:${pageIndex}@${scale}:${invert ? 1 : 0}/${tx},${ty}`;
 }

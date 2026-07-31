@@ -7,6 +7,7 @@ import {
   pageDeviceSize,
 } from "../../lib/coords";
 import { TILE_SIZE, tileKey, visibleTiles } from "../../lib/tile-range";
+import { useUiStore } from "../../state/ui-store";
 import { useViewerStore } from "../../state/viewer-store";
 import {
   clearInFlight,
@@ -55,6 +56,7 @@ export function PageView({
   const unrot = pageDeviceSize(pagePt, scale);
   const disp = displaySize(pagePt, scale, rotation);
   const preview = useViewerStore((s) => s.previews.get(pageIndex));
+  const invert = useUiStore((s) => s.resolvedTheme === "dark");
 
   // Effects depend on these primitives, not the freshly-derived objects
   // above — object identities change every render and would re-run them.
@@ -67,16 +69,22 @@ export function PageView({
     drawnTiles.current.clear();
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    drawUnderlay(ctx, unrotW, unrotH, useViewerStore.getState().previews.get(pageIndex));
-  }, [docId, pageIndex, scale, unrotW, unrotH]);
+    drawUnderlay(
+      ctx,
+      unrotW,
+      unrotH,
+      useViewerStore.getState().previews.get(pageIndex),
+      invert,
+    );
+  }, [docId, pageIndex, scale, unrotW, unrotH, invert]);
 
   // A preview arriving late only fills a canvas that has no tiles yet.
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
     if (ctx && preview && drawnTiles.current.size === 0) {
-      drawUnderlay(ctx, unrotW, unrotH, preview);
+      drawUnderlay(ctx, unrotW, unrotH, preview, invert);
     }
-  }, [preview, unrotW, unrotH]);
+  }, [preview, unrotW, unrotH, invert]);
 
   // Tile pass: request what the viewport needs, cancel what it no longer does.
   useEffect(() => {
@@ -91,15 +99,15 @@ export function PageView({
     );
     const needed = visibleTiles({ width: unrotW, height: unrotH }, pageRect);
     const neededKeys = new Set(
-      needed.map((t) => tileKey(docId, pageIndex, scale, t.tx, t.ty)),
+      needed.map((t) => tileKey(docId, pageIndex, scale, invert, t.tx, t.ty)),
     );
 
     // Abandon queued tiles of this page+scale that scrolled out of relevance.
-    const prefix = `${docId}:${pageIndex}@${scale}/`;
+    const prefix = `${docId}:${pageIndex}@${scale}:`;
     sweepInFlight((key) => key.startsWith(prefix) && !neededKeys.has(key));
 
     for (const t of needed) {
-      const key = tileKey(docId, pageIndex, scale, t.tx, t.ty);
+      const key = tileKey(docId, pageIndex, scale, invert, t.tx, t.ty);
       if (drawnTiles.current.has(key)) continue;
 
       const cached = tileCache.get(key);
@@ -122,6 +130,7 @@ export function PageView({
           width: TILE_SIZE,
           height: TILE_SIZE,
         },
+        invert,
         requestId,
       )
         .then((tilePage) => {
@@ -140,7 +149,7 @@ export function PageView({
         })
         .catch(() => clearInFlight(key));
     }
-  }, [docId, pageIndex, scale, rotation, pagePt, viewX, viewY, viewW, viewH, unrotW, unrotH]);
+  }, [docId, pageIndex, scale, rotation, pagePt, viewX, viewY, viewW, viewH, unrotW, unrotH, invert]);
 
   // Unmount: abandon anything still queued for this page, at any scale.
   useEffect(() => {
@@ -157,7 +166,7 @@ export function PageView({
         width: disp.width,
         height: disp.height,
         boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
-        background: "#fff",
+        background: invert ? PAGE_DARK : "#fff",
       }}
     >
       {/* The rotator: canvas, text layer, and highlights share this single
@@ -186,13 +195,17 @@ export function PageView({
   );
 }
 
+/** What inverted paper looks like; matches invert_pixel(255,255,255). */
+const PAGE_DARK = "#000";
+
 function drawUnderlay(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   preview: ImageBitmap | undefined,
+  invert: boolean,
 ) {
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = invert ? PAGE_DARK : "#ffffff";
   ctx.fillRect(0, 0, width, height);
   if (preview) {
     ctx.imageSmoothingEnabled = true;

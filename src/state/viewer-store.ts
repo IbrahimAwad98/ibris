@@ -9,6 +9,7 @@ import {
 
 import type { Rotation } from "../lib/coords";
 import { clampScale } from "../lib/zoom";
+import { useUiStore } from "./ui-store";
 
 /** Gap between pages in layout pixels. */
 export const PAGE_GAP = 16;
@@ -179,8 +180,10 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       if (nonce !== openNonce) return; // superseded by another open/hydrate
       if (get().previews.has(i)) continue;
       const scale = PREVIEW_WIDTH_PX / pages[i].width;
+      // Previews underlay the tiles, so they must match the tile theme.
+      const invert = useUiStore.getState().resolvedTheme === "dark";
       try {
-        const page = await renderPage(docId, i, scale, nextRequestId());
+        const page = await renderPage(docId, i, scale, invert, nextRequestId());
         const bitmap = await createImageBitmap(
           new ImageData(page.data, page.width, page.height),
         );

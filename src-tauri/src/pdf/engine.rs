@@ -20,6 +20,7 @@ use pdfium_render::prelude::*;
 use serde::Serialize;
 use tokio::sync::oneshot;
 
+use super::dark;
 use super::error::PdfError;
 use super::text::{extract_runs, search_page, PageText, SearchMatch};
 
@@ -54,6 +55,8 @@ pub struct RenderRequest {
     pub doc_id: u64,
     pub page_index: u16,
     pub scale: f32,
+    /// Dark mode: flip lightness in place, skipping embedded images.
+    pub invert: bool,
     pub cancel: Arc<AtomicBool>,
     pub reply: oneshot::Sender<Result<RenderedPage, PdfError>>,
 }
@@ -76,6 +79,8 @@ pub struct TileRequest {
     pub page_index: u16,
     pub scale: f32,
     pub rect: TileRect,
+    /// Dark mode: flip lightness in place, skipping embedded images.
+    pub invert: bool,
     pub cancel: Arc<AtomicBool>,
     pub reply: oneshot::Sender<Result<RenderedPage, PdfError>>,
 }
@@ -187,7 +192,8 @@ impl EngineQueue {
     }
 
     fn set_active(&self, doc_id: Option<u64>) {
-        self.active.store(doc_id.unwrap_or(NO_ACTIVE), Ordering::Relaxed);
+        self.active
+            .store(doc_id.unwrap_or(NO_ACTIVE), Ordering::Relaxed);
     }
 
     /// Blocks until a message is available and returns the highest-priority
@@ -300,7 +306,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
                     .ok_or_else(|| PdfError::Internal {
                         detail: format!("unknown document id {}", req.doc_id),
                     })
-                    .and_then(|doc| render_one(doc, req.page_index, req.scale));
+                    .and_then(|doc| render_one(doc, req.page_index, req.scale, req.invert));
                 let _ = req.reply.send(result);
             }
             EngineMsg::RenderTile(req) => {
@@ -313,7 +319,9 @@ fn engine_main(queue: Arc<EngineQueue>) {
                     .ok_or_else(|| PdfError::Internal {
                         detail: format!("unknown document id {}", req.doc_id),
                     })
-                    .and_then(|doc| render_tile(doc, req.page_index, req.scale, req.rect));
+                    .and_then(|doc| {
+                        render_tile(doc, req.page_index, req.scale, req.rect, req.invert)
+                    });
                 let _ = req.reply.send(result);
             }
             EngineMsg::ExtractText {
@@ -448,6 +456,94 @@ fn open_one(
     Ok((id, info))
 }
 
+/// Renders one tile of a page: the region `rect` of the page as it would
+/// appear scaled by `scale`, into a tile-sized bitmap. Regions past the page
+/// edge come back as the white clear colour, so callers may request the full
+/// tile grid without edge-clamping.
+fn render_tile(
+    document: &PdfDocument<'_>,
+    page_index: u16,
+    scale: f32,
+    rect: TileRect,
+    invert: bool,
+) -> Result<RenderedPage, PdfError> {
+    if rect.width <= 0 || rect.height <= 0 {
+        return Err(PdfError::Internal {
+            detail: format!("degenerate tile rect {rect:?}"),
+        });
+    }
+    let page = document.pages().get(page_index.into())?;
+    let mut bitmap = PdfBitmap::empty(rect.width, rect.height, PdfBitmapFormat::BGRA)?;
+    let config = PdfRenderConfig::new()
+        .scale_page_by_factor(scale)
+        .set_origin(-rect.x, -rect.y);
+    page.render_into_bitmap_with_config(&mut bitmap, &config)?;
+    let mut rgba = bitmap.as_rgba_bytes();
+    if invert {
+        let skip = image_skip_rects(&page, scale, rect);
+        dark::invert_page(&mut rgba, rect.width as u32, &skip);
+    }
+    Ok(RenderedPage {
+        width: rect.width as u32,
+        height: rect.height as u32,
+        rgba,
+    })
+}
+
+/// Device-pixel rects of the page's image objects, relative to this tile —
+/// the regions dark mode must leave positive. Coordinates go through the
+/// visible-box origin exactly like text geometry (decision 009).
+// ponytail: only top-level page objects are scanned; an image nested inside
+// a Form XObject still gets inverted. Recurse into form objects if a
+// real-world document surfaces one.
+fn image_skip_rects(page: &PdfPage<'_>, scale: f32, tile: TileRect) -> Vec<dark::PixelRect> {
+    let (box_left, box_top) = super::text::visible_box_origin(page);
+    page.objects()
+        .iter()
+        .filter_map(|object| {
+            if object.object_type() != PdfPageObjectType::Image {
+                return None;
+            }
+            let b = object.bounds().ok()?;
+            Some(dark::PixelRect {
+                x: ((b.left().value - box_left) * scale).floor() as i32 - tile.x,
+                y: ((box_top - b.top().value) * scale).floor() as i32 - tile.y,
+                width: (b.width().value * scale).ceil() as i32 + 1,
+                height: (b.height().value * scale).ceil() as i32 + 1,
+            })
+        })
+        .collect()
+}
+
+/// Whole-page render, implemented as a full-page tile so that page renders
+/// and tile renders share one PDFium pipeline — the two pipelines
+/// (`render_with_config` vs `render_into_bitmap` + origin) produce subtly
+/// different rasterisation, which would make tiles visibly seam against
+/// whole-page output.
+fn render_one(
+    document: &PdfDocument<'_>,
+    page_index: u16,
+    scale: f32,
+    invert: bool,
+) -> Result<RenderedPage, PdfError> {
+    let page = document.pages().get(page_index.into())?;
+    let width = (page.width().value * scale).round().max(1.0) as i32;
+    let height = (page.height().value * scale).round().max(1.0) as i32;
+    drop(page);
+    render_tile(
+        document,
+        page_index,
+        scale,
+        TileRect {
+            x: 0,
+            y: 0,
+            width,
+            height,
+        },
+        invert,
+    )
+}
+
 #[cfg(test)]
 mod queue_tests {
     use super::next_index;
@@ -481,59 +577,4 @@ mod queue_tests {
     fn empty_queue_yields_none() {
         assert_eq!(next_index(&[], Some(1)), None);
     }
-}
-
-/// Renders one tile of a page: the region `rect` of the page as it would
-/// appear scaled by `scale`, into a tile-sized bitmap. Regions past the page
-/// edge come back as the white clear colour, so callers may request the full
-/// tile grid without edge-clamping.
-fn render_tile(
-    document: &PdfDocument<'_>,
-    page_index: u16,
-    scale: f32,
-    rect: TileRect,
-) -> Result<RenderedPage, PdfError> {
-    if rect.width <= 0 || rect.height <= 0 {
-        return Err(PdfError::Internal {
-            detail: format!("degenerate tile rect {rect:?}"),
-        });
-    }
-    let page = document.pages().get(page_index.into())?;
-    let mut bitmap = PdfBitmap::empty(rect.width, rect.height, PdfBitmapFormat::BGRA)?;
-    let config = PdfRenderConfig::new()
-        .scale_page_by_factor(scale)
-        .set_origin(-rect.x, -rect.y);
-    page.render_into_bitmap_with_config(&mut bitmap, &config)?;
-    Ok(RenderedPage {
-        width: rect.width as u32,
-        height: rect.height as u32,
-        rgba: bitmap.as_rgba_bytes(),
-    })
-}
-
-/// Whole-page render, implemented as a full-page tile so that page renders
-/// and tile renders share one PDFium pipeline — the two pipelines
-/// (`render_with_config` vs `render_into_bitmap` + origin) produce subtly
-/// different rasterisation, which would make tiles visibly seam against
-/// whole-page output.
-fn render_one(
-    document: &PdfDocument<'_>,
-    page_index: u16,
-    scale: f32,
-) -> Result<RenderedPage, PdfError> {
-    let page = document.pages().get(page_index.into())?;
-    let width = (page.width().value * scale).round().max(1.0) as i32;
-    let height = (page.height().value * scale).round().max(1.0) as i32;
-    drop(page);
-    render_tile(
-        document,
-        page_index,
-        scale,
-        TileRect {
-            x: 0,
-            y: 0,
-            width,
-            height,
-        },
-    )
 }

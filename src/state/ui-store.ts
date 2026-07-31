@@ -23,6 +23,8 @@ export interface UiState {
   sidebarWidth: number;
   /** Persisted preference; "system" follows the OS. */
   theme: ThemePreference;
+  /** What is actually in effect right now; kept current by App. */
+  resolvedTheme: "light" | "dark";
   /** Bumped by Ctrl+F so the search input can grab focus. */
   searchFocusNonce: number;
   toggleSidebar: () => void;
@@ -41,6 +43,7 @@ export const useUiStore = create<UiState>()(
       sidebarTab: "thumbnails",
       sidebarWidth: 240,
       theme: "system",
+      resolvedTheme: resolveTheme("system"),
       searchFocusNonce: 0,
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarTab: (tab) => set({ sidebarTab: tab }),
