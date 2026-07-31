@@ -70,7 +70,7 @@ export function PdfViewer() {
           justifyContent: "center",
         }}
       >
-        {error && <p style={{ color: "#ff8a80" }}>{error}</p>}
+        {error && <p style={{ color: "var(--error)" }}>{error}</p>}
       </div>
     );
   }

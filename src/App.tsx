@@ -2,9 +2,24 @@ import { useEffect } from "react";
 import { TabBar } from "./features/shell/TabBar";
 import { PdfViewer } from "./features/viewer/PdfViewer";
 import { useTabsStore } from "./state/tabs-store";
+import { useUiStore } from "./state/ui-store";
 import "./App.css";
 
 function App() {
+  // Theme: data-theme on <html> drives the CSS variable blocks; "system"
+  // tracks the OS live via the media query listener.
+  const theme = useUiStore((s) => s.theme);
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: light)");
+    const apply = () => {
+      document.documentElement.dataset.theme =
+        theme === "system" ? (mq.matches ? "light" : "dark") : theme;
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [theme]);
+
   // Launch behaviour: the dev convenience path replaces the stored session;
   // otherwise the previous session's tabs come back.
   useEffect(() => {

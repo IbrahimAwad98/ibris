@@ -16,7 +16,7 @@ export function TabBar() {
         display: "flex",
         alignItems: "stretch",
         flexShrink: 0,
-        background: "#2f2f34",
+        background: "var(--bg-raised)",
         overflowX: "auto",
         scrollbarWidth: "none",
       }}
@@ -48,9 +48,9 @@ export function TabBar() {
               userSelect: "none",
               whiteSpace: "nowrap",
               fontSize: 13,
-              background: active ? "#404046" : "transparent",
-              color: active ? "#ececec" : "#a8a8ae",
-              borderRight: "1px solid #26262a",
+              background: active ? "var(--bg)" : "transparent",
+              color: active ? "var(--text)" : "var(--text-dim)",
+              borderRight: "1px solid var(--border-deep)",
             }}
           >
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
