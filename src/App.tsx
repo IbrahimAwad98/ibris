@@ -12,8 +12,10 @@ function App() {
   useEffect(() => {
     const mq = matchMedia("(prefers-color-scheme: light)");
     const apply = () => {
-      document.documentElement.dataset.theme =
+      const resolved =
         theme === "system" ? (mq.matches ? "light" : "dark") : theme;
+      document.documentElement.dataset.theme = resolved;
+      useUiStore.setState({ resolvedTheme: resolved });
     };
     apply();
     mq.addEventListener("change", apply);
