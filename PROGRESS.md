@@ -103,3 +103,44 @@ at the bottom. Branch per milestone; nothing pushed.
   aa9b042 (stack core) fails `npm run typecheck` in isolation — a test
   type too wide, fixed in the very next commit b-fix on the same push;
   every commit from here on gets the gate before commit, not after.
+
+- **2026-07-31 23:10** — Annotation engine landed (4c07f5d): raw-FFI write
+  pipeline with /AP appearance streams for all ten tools, /NM identity,
+  idempotent delete-before-write saves via SaveAsCopy + temp + rename,
+  round-trip test green (subtype, geometry, colour-via-AP, /CA opacity,
+  double-save no-duplication) plus a pixel test proving APs draw.
+  Surprises: (1) PDFium's FPDFPage_CreateAnnot refuses /Line — lines and
+  arrows are written as /Ink strokes, visually identical via /AP, readers
+  classify them as pencil; (2) FPDFAnnot_GetColor refuses to answer once
+  an /AP exists, so colour is verified through the appearance stream.
+  chrono added (already in the tree via pdfium-render; licence gate ok).
+
+- **2026-07-31 23:15** — Sidecar crash recovery wired (e754ba3): appData
+  sidecars keyed by hashed path, fingerprint-validated, debounced writes
+  with flush-on-tab-switch. Save checks the disk fingerprint and prompts
+  before overwriting.
+
+- **2026-07-31 23:24** — M2 UI landed (7e73d72): tool store (per-tool
+  persisted settings), SVG annotation + interaction layers (ink, shapes,
+  note popover, stamp; text-selection markup via a central listener),
+  history panel with jump-to-state, per-tab dirty dots, close prompt
+  (Save/Discard/Cancel in-app modal — the native dialog plugin cannot do
+  three buttons), and registry commands save/save-as/undo/redo/delete.
+  Deliberate M2 ceilings, all in M2-PLAN §6: foreign annotations fully
+  read-only; annotations saved in an earlier session are read-only too
+  (they render via the page bitmap); no resize handles (move only); note
+  contents set at creation, not editable afterwards.
+
+- **2026-07-31 23:33** — **M2 COMPLETE.** Visual proof captured
+  (`screenshots/viewer-annotations.png`): the round-trip test's saved file
+  opened in the real app — every annotation type renders from its /AP
+  stream through the app pipeline, dark-mode luminance flip keeps hues
+  (yellow fill goes olive, not blue). Full gate green both sides: cargo
+  test (35 tests, incl. round-trip + AP render), clippy -D warnings, fmt,
+  deny licenses, npm test (100), lint, typecheck. Disk: cargo-target
+  13.9 GB, D: free 48.7 GB. Third-party reader rendering (Acrobat, Edge)
+  could NOT be verified without hands — on the manual checklist, as is
+  one oddity seen in the screenshot: the active tool showed "Underline"
+  on launch where "Select" was expected; needs a manual look (state is
+  correct in tests; may have been stray hover/persisted dev state).
+  Starting M3 on feat/m3-page-operations.
