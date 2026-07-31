@@ -6,6 +6,9 @@ import type { FileFingerprint } from "../ipc/sidecar";
 
 export interface SidecarState {
   annotations: Record<AnnotationId, Annotation>;
+  /** View slot → source page; null only for never-initialised state. */
+  pageOrder: number[] | null;
+  rotations: Record<number, 0 | 90 | 180 | 270>;
   commands: CommandRecord[];
   cursor: number;
   savedCursor: number;
@@ -59,12 +62,17 @@ export function parseSidecar(
     !Array.isArray(file.commands) ||
     typeof file.cursor !== "number" ||
     typeof file.savedCursor !== "number" ||
-    !Array.isArray(file.savedIds)
+    !Array.isArray(file.savedIds) ||
+    !Array.isArray(file.pageOrder) ||
+    typeof file.rotations !== "object" ||
+    file.rotations === null
   ) {
     return null;
   }
   return {
     annotations: file.annotations,
+    pageOrder: file.pageOrder,
+    rotations: file.rotations,
     commands: file.commands,
     cursor: file.cursor,
     savedCursor: file.savedCursor,
