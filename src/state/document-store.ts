@@ -91,6 +91,8 @@ export interface DocumentState extends DocumentSnapshot {
   execute: (record: CommandRecord) => void;
   undo: () => void;
   redo: () => void;
+  /** Undoes/redoes until the cursor sits at `target` (history panel). */
+  jumpTo: (target: number) => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   isDirty: () => boolean;
@@ -147,6 +149,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       annotations: applyRecord(annotations, commands[cursor]),
       cursor: cursor + 1,
     });
+  },
+
+  jumpTo: (target) => {
+    const clamped = Math.max(0, Math.min(target, get().commands.length));
+    while (get().cursor > clamped) get().undo();
+    while (get().cursor < clamped) get().redo();
   },
 
   canUndo: () => get().cursor > 0,

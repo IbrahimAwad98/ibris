@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { nextRequestId, renderTile } from "../../ipc/pdf";
+import { AnnotationLayer } from "../annotations/AnnotationLayer";
+import { InteractionLayer } from "../annotations/InteractionLayer";
 import type { Rect, Rotation, Size } from "../../lib/coords";
 import {
   displayRectToPageRect,
@@ -51,6 +53,7 @@ export function PageView({
   viewRect,
 }: PageViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
   const drawnTiles = useRef<Set<string>>(new Set());
 
   const unrot = pageDeviceSize(pagePt, scale);
@@ -159,6 +162,8 @@ export function PageView({
 
   return (
     <div
+      ref={outerRef}
+      data-page-el={pageIndex}
       style={{
         position: "absolute",
         top,
@@ -190,6 +195,14 @@ export function PageView({
         />
         <TextLayer docId={docId} pageIndex={pageIndex} scale={scale} />
         <SearchHighlights pageIndex={pageIndex} scale={scale} />
+        <AnnotationLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
+        <InteractionLayer
+          pageIndex={pageIndex}
+          pagePt={pagePt}
+          scale={scale}
+          rotation={rotation}
+          outerRef={outerRef}
+        />
       </div>
     </div>
   );

@@ -5,7 +5,8 @@ export function TabBar() {
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const activateTab = useTabsStore((s) => s.activateTab);
-  const closeTab = useTabsStore((s) => s.closeTab);
+  const closeTab = useTabsStore((s) => s.requestCloseTab);
+  const dirtyTabs = useTabsStore((s) => s.dirtyTabs);
 
   if (tabs.length === 0) return null;
 
@@ -35,7 +36,7 @@ export function TabBar() {
               if (e.key === "Enter" || e.key === " ") activateTab(t.id);
             }}
             onAuxClick={(e) => {
-              if (e.button === 1) void closeTab(t.id);
+              if (e.button === 1) closeTab(t.id);
             }}
             style={{
               display: "flex",
@@ -53,6 +54,14 @@ export function TabBar() {
               borderRight: "1px solid var(--border-deep)",
             }}
           >
+            {dirtyTabs[t.id] && (
+              <span
+                title="Unsaved changes"
+                style={{ color: "var(--accent-soft)", fontSize: 10 }}
+              >
+                ●
+              </span>
+            )}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
               {t.title}
             </span>
@@ -60,7 +69,7 @@ export function TabBar() {
               aria-label={`Close ${t.title}`}
               onClick={(e) => {
                 e.stopPropagation();
-                void closeTab(t.id);
+                closeTab(t.id);
               }}
               style={{
                 border: "none",

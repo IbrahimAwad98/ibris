@@ -72,6 +72,11 @@ export interface TabsState {
   recents: RecentEntry[];
   /** Guards restoreSession against running twice (StrictMode, re-mounts). */
   restored: boolean;
+  /** Unsaved-changes flag per tab id; kept current by a store subscription.
+   * Session-local, never persisted. */
+  dirtyTabs: Record<string, boolean>;
+  /** Close with an unsaved-changes prompt when needed. */
+  requestCloseTab: (id: string) => void;
   /** Opens a path in a new tab, or activates the tab that already has it. */
   openTab: (path: string) => Promise<void>;
   activateTab: (id: string) => void;
@@ -208,6 +213,23 @@ export const useTabsStore = create<TabsState>()(
       viewByPath: {},
       recents: [],
       restored: false,
+      dirtyTabs: {},
+
+      requestCloseTab: (id) => {
+        const { dirtyTabs, activeTabId, activateTab, closeTab } = get();
+        const dirty =
+          id === activeTabId
+            ? useDocumentStore.getState().isDirty()
+            : (dirtyTabs[id] ?? false);
+        if (!dirty) {
+          void closeTab(id);
+          return;
+        }
+        // The prompt saves via the active document store, so the tab must
+        // be the active one before the modal opens.
+        if (id !== activeTabId) activateTab(id);
+        useUiStore.getState().setClosePrompt(id);
+      },
 
       openTab: async (path) => {
         const { tabs, activeTabId, activateTab, saveActiveView } = get();
@@ -431,12 +453,21 @@ useUiStore.subscribe((state, prev) => {
 });
 
 // Any command-stack change schedules a crash-recovery sidecar write for
-// the active tab's document (M2-PLAN §2).
+// the active tab's document (M2-PLAN §2) and keeps its dirty flag current.
 useDocumentStore.subscribe((state, prev) => {
-  if (state.commands === prev.commands && state.cursor === prev.cursor) return;
-  const { tabs, activeTabId } = useTabsStore.getState();
+  const stackChanged =
+    state.commands !== prev.commands || state.cursor !== prev.cursor;
+  const dirtyChanged =
+    stackChanged || state.savedCursor !== prev.savedCursor;
+  if (!dirtyChanged) return;
+  const { tabs, activeTabId, dirtyTabs } = useTabsStore.getState();
   const tab = tabs.find((t) => t.id === activeTabId);
-  if (tab) scheduleSidecarWrite(tab.path);
+  if (!tab) return;
+  if (stackChanged) scheduleSidecarWrite(tab.path);
+  const dirty = state.cursor !== state.savedCursor;
+  if ((dirtyTabs[tab.id] ?? false) !== dirty) {
+    useTabsStore.setState({ dirtyTabs: { ...dirtyTabs, [tab.id]: dirty } });
+  }
 });
 
 const VIEW_SAVE_DEBOUNCE_MS = 500;
