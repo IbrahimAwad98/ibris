@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { CommandPalette } from "./features/shell/CommandPalette";
+import { handleShortcut } from "./features/shell/commands";
 import { TabBar } from "./features/shell/TabBar";
 import { PdfViewer } from "./features/viewer/PdfViewer";
 import { useTabsStore } from "./state/tabs-store";
@@ -34,6 +36,13 @@ function App() {
     }
   }, []);
 
+  // The one keyboard dispatcher, driven entirely by the command registry.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => void handleShortcut(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Best-effort final write only — WebView2 skips beforeunload on kill,
   // crash, and updater paths. The durable save is the debounced view-state
   // subscription in tabs-store.
@@ -49,6 +58,7 @@ function App() {
       <div style={{ flex: 1, minHeight: 0 }}>
         <PdfViewer />
       </div>
+      <CommandPalette />
     </div>
   );
 }

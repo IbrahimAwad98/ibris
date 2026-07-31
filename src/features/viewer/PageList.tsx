@@ -113,58 +113,7 @@ export function PageList() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [setScale]);
 
-  // Keyboard zoom and fit shortcuts.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!e.ctrlKey) return;
-      const el = containerRef.current;
-      const s = useViewerStore.getState();
-      const centre = el
-        ? { x: el.clientWidth / 2, y: el.clientHeight / 2 }
-        : { x: 0, y: 0 };
-      const currentPt = s.pages[s.currentPage];
-      if (!currentPt) return;
-      const rot = pageRotation(s, s.currentPage);
-      switch (e.key) {
-        case "=":
-        case "+":
-          e.preventDefault();
-          setScale(zoomIn(s.scale), { anchor: centre });
-          break;
-        case "-":
-          e.preventDefault();
-          setScale(zoomOut(s.scale), { anchor: centre });
-          break;
-        case "0":
-          e.preventDefault();
-          if (el)
-            setScale(
-              fitPageScale(
-                { width: el.clientWidth, height: el.clientHeight },
-                currentPt,
-                rot,
-                PAGE_GAP,
-              ),
-              { fitMode: "page", anchor: centre },
-            );
-          break;
-        case "1":
-          e.preventDefault();
-          setScale(1, { anchor: centre });
-          break;
-        case "2":
-          e.preventDefault();
-          if (el)
-            setScale(fitWidthScale(el.clientWidth, currentPt, rot, PAGE_GAP), {
-              fitMode: "width",
-              anchor: centre,
-            });
-          break;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setScale]);
+  // Keyboard zoom/fit shortcuts live in the command registry (shell).
 
   // Navigation requests (thumbnails, outline, search) land here.
   const scrollTarget = useViewerStore((s) => s.scrollTarget);

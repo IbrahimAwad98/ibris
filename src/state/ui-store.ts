@@ -27,6 +27,10 @@ export interface UiState {
   resolvedTheme: "light" | "dark";
   /** Bumped by Ctrl+F so the search input can grab focus. */
   searchFocusNonce: number;
+  /** Command palette overlay; "goto" is the Ctrl+G page-number mode. */
+  paletteMode: "commands" | "goto" | null;
+  openPalette: (mode: "commands" | "goto") => void;
+  closePalette: () => void;
   toggleSidebar: () => void;
   setSidebarTab: (tab: SidebarTab) => void;
   setSidebarWidth: (width: number) => void;
@@ -45,6 +49,9 @@ export const useUiStore = create<UiState>()(
       theme: "system",
       resolvedTheme: resolveTheme("system"),
       searchFocusNonce: 0,
+      paletteMode: null,
+      openPalette: (mode) => set({ paletteMode: mode }),
+      closePalette: () => set({ paletteMode: null }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarTab: (tab) => set({ sidebarTab: tab }),
       setSidebarWidth: (width) =>
