@@ -29,7 +29,7 @@ async fn tile_covering_text_has_ink_and_blank_tile_does_not() {
         .expect("open failed");
 
     let text_tile = service
-        .render_tile(doc_id, 0, SCALE, tile(256, 256), 1)
+        .render_tile(doc_id, 0, SCALE, tile(256, 256), false, 1)
         .await
         .expect("text tile render failed");
     assert_eq!(text_tile.width, 512);
@@ -39,7 +39,7 @@ async fn tile_covering_text_has_ink_and_blank_tile_does_not() {
     assert!(dark > 500, "text tile rendered blank: {dark} dark pixels");
 
     let blank_tile = service
-        .render_tile(doc_id, 0, SCALE, tile(1024, 2048), 2)
+        .render_tile(doc_id, 0, SCALE, tile(1024, 2048), false, 2)
         .await
         .expect("blank tile render failed");
     assert_eq!(
@@ -58,7 +58,7 @@ async fn tiles_stitch_exactly_into_the_whole_page_render() {
         .expect("open failed");
 
     let whole = service
-        .render(doc_id, 0, SCALE, 3)
+        .render(doc_id, 0, SCALE, false, 3)
         .await
         .expect("whole-page render failed");
     assert_eq!(whole.width, 2448);
@@ -66,7 +66,7 @@ async fn tiles_stitch_exactly_into_the_whole_page_render() {
     // A tile overlapping the text region must match the whole-page render
     // byte for byte at the same coordinates.
     let t = service
-        .render_tile(doc_id, 0, SCALE, tile(256, 256), 4)
+        .render_tile(doc_id, 0, SCALE, tile(256, 256), false, 4)
         .await
         .expect("tile render failed");
 
@@ -115,7 +115,7 @@ async fn tile_past_page_edge_renders_without_error() {
 
     // Page is 2448x3168 at 4x; this tile hangs off both edges.
     let t = service
-        .render_tile(doc_id, 0, SCALE, tile(2304, 3072), 5)
+        .render_tile(doc_id, 0, SCALE, tile(2304, 3072), false, 5)
         .await
         .expect("edge tile render failed");
     assert_eq!(t.width, 512);
