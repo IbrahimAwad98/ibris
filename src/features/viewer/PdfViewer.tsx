@@ -15,20 +15,7 @@ export function PdfViewer() {
   const hasTabs = useTabsStore((s) => s.tabs.length > 0);
   const openTab = useTabsStore((s) => s.openTab);
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
-  const focusSearch = useUiStore((s) => s.focusSearch);
   const [dragging, setDragging] = useState(false);
-
-  // Ctrl+F opens the sidebar's search tab and focuses the input.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        focusSearch();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [focusSearch]);
 
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
