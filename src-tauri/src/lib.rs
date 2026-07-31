@@ -18,6 +18,7 @@ pub fn run() {
             commands::pdf::get_outline,
             commands::pdf::cancel_render,
             commands::pdf::cancel_renders,
+            commands::pdf::save_annotated,
             commands::pdf::close_document,
             commands::pdf::set_active_document,
         ])

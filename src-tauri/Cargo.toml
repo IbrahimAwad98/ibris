@@ -25,6 +25,8 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pdfium-render = "0.9.3"
+# Already in the tree via pdfium-render; used for PDF date strings.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1.53.1", features = ["sync"] }
 thiserror = "2.0.19"
 

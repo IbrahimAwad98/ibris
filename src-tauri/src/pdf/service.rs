@@ -193,6 +193,40 @@ impl PdfService {
         Ok(())
     }
 
+    /// Applies annotations to the file at `path` and rewrites it in place.
+    /// The viewing document is untouched (see pdf/save.rs). Fails with
+    /// `Io`, `Corrupt`, or `Internal`.
+    pub async fn save_annotated(
+        &self,
+        path: PathBuf,
+        annotations: Vec<super::annot::AnnotationData>,
+        our_ids: Vec<String>,
+    ) -> Result<(), PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::SaveAnnotated {
+            path,
+            annotations,
+            our_ids,
+            reply,
+        })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the save request".into(),
+        })?
+    }
+
+    /// Enumerates the annotations in the file at `path` (fresh load, not
+    /// the viewing document). Verification aid for tests and diagnostics.
+    pub async fn read_annotations(
+        &self,
+        path: PathBuf,
+    ) -> Result<Vec<super::annot::ReadAnnotation>, PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::ReadAnnotations { path, reply })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the read request".into(),
+        })?
+    }
+
     /// Closes a document; the engine drops it.
     pub fn close(&self, doc_id: u64) -> Result<(), PdfError> {
         EngineHandle::global().send(EngineMsg::Close { doc_id })
