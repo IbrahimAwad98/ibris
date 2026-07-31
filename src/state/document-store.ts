@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import type { Annotation, AnnotationId } from "../lib/annotations";
 import { annotationNoun } from "../lib/annotations";
+import type { FileFingerprint } from "../ipc/sidecar";
 
 export type CommandRecord =
   | {
@@ -75,30 +76,32 @@ export const MAX_STACK = 500;
  * (aged out or truncated) — the document stays dirty until the next save. */
 const SAVED_UNREACHABLE = -1;
 
-export interface DocumentState {
-  /** Materialised annotations at `cursor`, keyed by id. Includes
-   * annotations imported from the opened file, which have no command. */
+/** Everything a tab snapshot or sidecar needs to put the stack back. */
+export interface DocumentSnapshot {
   annotations: Annotations;
   commands: CommandRecord[];
-  /** Index just past the last applied command. */
   cursor: number;
   savedCursor: number;
+  savedIds: string[];
+}
+
+export interface DocumentState extends DocumentSnapshot {
+  /** The on-disk identity captured at open; save checks it for conflicts. */
+  fingerprint: FileFingerprint | null;
   execute: (record: CommandRecord) => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   isDirty: () => boolean;
-  markSaved: () => void;
+  /** Records a completed save: the cursor position and the /NM ids now
+   * living in the file, plus the file's fresh fingerprint. */
+  markSaved: (savedIds: string[], fingerprint: FileFingerprint | null) => void;
   reset: () => void;
   /** Puts back a snapshot/sidecar state verbatim (annotations are already
    * materialised at `cursor`; commands are only the undo window). */
-  restore: (
-    annotations: Annotations,
-    commands: CommandRecord[],
-    cursor: number,
-    savedCursor: number,
-  ) => void;
+  restore: (snapshot: DocumentSnapshot, fingerprint: FileFingerprint | null) => void;
+  snapshot: () => DocumentSnapshot;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
@@ -106,6 +109,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   commands: [],
   cursor: 0,
   savedCursor: 0,
+  savedIds: [],
+  fingerprint: null,
 
   execute: (record) => {
     const { annotations, commands, cursor, savedCursor } = get();
@@ -147,13 +152,25 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   canUndo: () => get().cursor > 0,
   canRedo: () => get().cursor < get().commands.length,
   isDirty: () => get().cursor !== get().savedCursor,
-  markSaved: () => set({ savedCursor: get().cursor }),
+  markSaved: (savedIds, fingerprint) =>
+    set({ savedCursor: get().cursor, savedIds, fingerprint }),
 
   reset: () =>
-    set({ annotations: {}, commands: [], cursor: 0, savedCursor: 0 }),
+    set({
+      annotations: {},
+      commands: [],
+      cursor: 0,
+      savedCursor: 0,
+      savedIds: [],
+      fingerprint: null,
+    }),
 
-  restore: (annotations, commands, cursor, savedCursor) =>
-    set({ annotations, commands, cursor, savedCursor }),
+  restore: (snapshot, fingerprint) => set({ ...snapshot, fingerprint }),
+
+  snapshot: () => {
+    const { annotations, commands, cursor, savedCursor, savedIds } = get();
+    return { annotations, commands, cursor, savedCursor, savedIds };
+  },
 }));
 
 // ---- Command factories -------------------------------------------------
