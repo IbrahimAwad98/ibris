@@ -1,8 +1,12 @@
 // Wires the document store to disk: sidecar crash recovery and the save
-// pipeline (M2-PLAN §§2-3, 5). Paths come in as arguments — this module
-// never reaches into the tab shell.
+// pipeline (M2-PLAN §§2-3, 5; M3 page structure). Paths come in as
+// arguments — this module never reaches into the tab shell.
 import { askUser } from "../ipc/dialog";
-import { saveAnnotated } from "../ipc/pdf";
+import {
+  closeDocument,
+  saveDocument as ipcSaveDocument,
+  setActiveDocument,
+} from "../ipc/pdf";
 import {
   fileFingerprint,
   sidecarDelete,
@@ -11,6 +15,7 @@ import {
 } from "../ipc/sidecar";
 import { parseSidecar, serializeSidecar } from "../lib/sidecar";
 import { useDocumentStore } from "./document-store";
+import { useViewerStore } from "./viewer-store";
 
 /** Restores the edit state for a freshly opened document: a sidecar with
  * a matching fingerprint brings crashed edits back; anything else starts
@@ -93,21 +98,72 @@ export async function saveDocument(path: string): Promise<boolean> {
   return true;
 }
 
-/** Saves the current annotations onto `target` (Save As when target
- * differs from the open document's path). */
+/** Saves the current structure + annotations onto `target` (Save As when
+ * target differs from the open document's path). */
 export async function saveToPath(openPath: string, target: string): Promise<void> {
   const s = useDocumentStore.getState();
+  const sourceCount = useViewerStore.getState().pages.length;
+  const order = s.pageOrder ?? Array.from({ length: sourceCount }, (_, i) => i);
+  const rotations = Object.entries(s.rotations)
+    .map(([src, deg]) => [Number(src), deg] as [number, number])
+    .filter(([, deg]) => deg % 360 !== 0);
+  const structural =
+    rotations.length > 0 ||
+    order.length !== sourceCount ||
+    order.some((src, i) => src !== i);
+
   const annotations = Object.values(s.annotations);
   const ourIds = [
     ...new Set([...s.savedIds, ...annotations.map((a) => a.id)]),
   ];
-  await saveAnnotated(target, annotations, ourIds);
+  await ipcSaveDocument(openPath, target, order, rotations, annotations, ourIds);
   const fresh = await fileFingerprint(target).catch(() => null);
-  if (target === openPath) {
+  if (target !== openPath) return;
+
+  cancelSidecarWrite();
+  void sidecarDelete(openPath).catch(() => undefined);
+
+  if (!structural) {
     useDocumentStore
       .getState()
       .markSaved(annotations.map((a) => a.id), fresh);
-    cancelSidecarWrite();
-    void sidecarDelete(openPath).catch(() => undefined);
+    return;
   }
+
+  // A structural save changes what page indexes mean on disk, so the open
+  // document is rebased: annotations remap source→final, order becomes
+  // identity, rotations are baked in, and — deliberately — the undo
+  // history resets (undoing a materialised reorder against a reloaded
+  // document has no meaningful base to return to).
+  const remapped = Object.fromEntries(
+    annotations
+      .filter((a) => order.includes(a.pageIndex))
+      .map((a) => {
+        const next = { ...a, pageIndex: order.indexOf(a.pageIndex) };
+        return [next.id, next];
+      }),
+  );
+  useDocumentStore.getState().restore(
+    {
+      annotations: remapped,
+      pageOrder: null,
+      rotations: {},
+      commands: [],
+      cursor: 0,
+      savedCursor: 0,
+      savedIds: Object.keys(remapped),
+    },
+    fresh,
+  );
+  // Reload the viewer so the engine document matches the new disk file;
+  // the superseded engine document must be closed by us (the tab shell
+  // deliberately never closes documents on openPath).
+  const oldDocId = useViewerStore.getState().docId;
+  await useViewerStore.getState().openPath(target);
+  useDocumentStore
+    .getState()
+    .initStructure(useViewerStore.getState().pages.length);
+  const newDocId = useViewerStore.getState().docId;
+  void setActiveDocument(newDocId).catch(() => undefined);
+  if (oldDocId !== null) void closeDocument(oldDocId).catch(() => undefined);
 }

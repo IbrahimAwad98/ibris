@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOutline, type OutlineNode } from "../../ipc/pdf";
 import { HistoryPanel } from "../annotations/HistoryPanel";
-import { useDocumentStore } from "../../state/document-store";
+import { ThumbnailPanel } from "./ThumbnailPanel";
 import { navigateToMatch, useSearchStore } from "../../state/search-store";
 import { useUiStore, type SidebarTab } from "../../state/ui-store";
 import { pageOrderOf, useViewerStore } from "../../state/viewer-store";
@@ -98,7 +98,7 @@ export function Sidebar() {
         ))}
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {tab === "thumbnails" && <ThumbnailList />}
+        {tab === "thumbnails" && <ThumbnailPanel />}
         {tab === "outline" && <OutlineList nodes={outline} depth={0} />}
         {tab === "search" && <SearchPanel />}
         {tab === "history" && <HistoryPanel />}
@@ -115,83 +115,6 @@ export function Sidebar() {
           zIndex: 10,
         }}
       />
-    </div>
-  );
-}
-
-// ponytail: all thumbnails render as small canvases with no windowing —
-// ~300 tiny canvases is fine; virtualize if 1000+-page docs ever hitch.
-function ThumbnailList() {
-  const pages = useViewerStore((s) => s.pages);
-  const docOrder = useDocumentStore((s) => s.pageOrder);
-  const currentPage = useViewerStore((s) => s.currentPage);
-  const scrollToPage = useViewerStore((s) => s.scrollToPage);
-  const order = (docOrder ?? pages.map((_, i) => i)).filter(
-    (src) => src < pages.length,
-  );
-
-  return (
-    <div style={{ padding: 8 }}>
-      {order.map((src, i) => (
-        <Thumbnail
-          key={src}
-          pageIndex={src}
-          label={i + 1}
-          active={i === currentPage}
-          onClick={() => scrollToPage(i)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Thumbnail({
-  pageIndex,
-  label,
-  active,
-  onClick,
-}: {
-  /** Source page (previews are keyed by it). */
-  pageIndex: number;
-  /** 1-based position in the current view order. */
-  label: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const preview = useViewerStore((s) => s.previews.get(pageIndex));
-  const dark = useUiStore((s) => s.resolvedTheme === "dark");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    // Previews render pre-inverted in dark mode; match their paper colour.
-    ctx.fillStyle = dark ? "#000" : "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (preview) {
-      ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-    }
-  }, [preview, dark]);
-
-  return (
-    <div
-      onClick={onClick}
-      style={{ marginBottom: 10, cursor: "pointer", textAlign: "center" }}
-    >
-      <canvas
-        ref={canvasRef}
-        width={108}
-        height={140}
-        style={{
-          width: "80%",
-          border: active
-            ? "2px solid var(--accent-soft)"
-            : "2px solid transparent",
-          background: dark ? "#000" : "#fff",
-        }}
-      />
-      <div style={{ fontSize: 11, opacity: 0.7 }}>{label}</div>
     </div>
   );
 }

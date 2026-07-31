@@ -183,15 +183,36 @@ export async function setActiveDocument(docId: number | null): Promise<void> {
 }
 
 /**
- * Applies annotations to the file at `path` and rewrites it in place.
- * `ourIds` are every /NM id the app has written for this document —
- * they are deleted before writing, making saves idempotent.
- * The wire shape of an annotation matches `Annotation` in lib/annotations.
+ * Applies page structure and annotations to the file at `srcPath`, writing
+ * the result to `destPath` (same path = in-place save; a subset order and
+ * a different path = extraction). `order` is the final page sequence as
+ * source indexes; `rotations` are extra clockwise degrees per source page.
+ * `ourIds` are every /NM id the app has written for this document — they
+ * are deleted before writing, making saves idempotent. The wire shape of
+ * an annotation matches `Annotation` in lib/annotations.
  */
-export async function saveAnnotated(
-  path: string,
+export async function saveDocument(
+  srcPath: string,
+  destPath: string,
+  order: number[],
+  rotations: [number, number][],
   annotations: unknown[],
   ourIds: string[],
 ): Promise<void> {
-  await invoke("save_annotated", { path, annotations, ourIds });
+  await invoke("save_document", {
+    srcPath,
+    destPath,
+    order,
+    rotations,
+    annotations,
+    ourIds,
+  });
+}
+
+/** Concatenates whole files into a new document at `destPath`. */
+export async function mergeDocuments(
+  paths: string[],
+  destPath: string,
+): Promise<void> {
+  await invoke("merge_documents", { paths, destPath });
 }
