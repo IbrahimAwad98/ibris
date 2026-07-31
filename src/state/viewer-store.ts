@@ -9,6 +9,7 @@ import {
 
 import type { Rotation } from "../lib/coords";
 import { clampScale } from "../lib/zoom";
+import { rotatePages, useDocumentStore } from "./document-store";
 import { useUiStore } from "./ui-store";
 
 /** Gap between pages in layout pixels. */
@@ -22,17 +23,18 @@ export type FitMode = "width" | "page" | null;
 
 export interface ViewerState {
   docId: number | null;
+  /** Source-page sizes, indexed by *engine* page. View order and rotation
+   * live in the document store (M3: they are document edits). */
   pages: PageSizePt[];
-  /** Low-res page bitmaps, kept for the lifetime of the document. */
+  /** Low-res page bitmaps keyed by source page, kept for the document's
+   * lifetime — reordering never invalidates them. */
   previews: ReadonlyMap<number, ImageBitmap>;
   error: string | null;
   scale: number;
   fitMode: FitMode;
   /** Anchor (viewport coords) for the pending scale change; consumed by PageList. */
   zoomAnchor: { x: number; y: number } | null;
-  rotationDoc: Rotation;
-  rotationByPage: Readonly<Record<number, Rotation>>;
-  /** Topmost visible page, kept current by PageList. */
+  /** Topmost visible page as a *view slot*, kept current by PageList. */
   currentPage: number;
   /**
    * Live scroll position, written by PageList on scroll: display-space
@@ -77,10 +79,20 @@ export function invalidateOpen(): void {
   openNonce += 1;
 }
 
-/** Effective rotation of a page: document rotation plus its own. */
-export function pageRotation(state: ViewerState, pageIndex: number): Rotation {
-  return ((state.rotationDoc + (state.rotationByPage[pageIndex] ?? 0)) %
-    360) as Rotation;
+/** The current view order: view slot → source page. Identity until the
+ * document store has structure. */
+export function pageOrderOf(state: ViewerState): number[] {
+  return (
+    useDocumentStore.getState().pageOrder ??
+    state.pages.map((_, i) => i)
+  );
+}
+
+/** Effective rotation of the page in view slot `viewIndex`. */
+export function pageRotation(state: ViewerState, viewIndex: number): Rotation {
+  const src = pageOrderOf(state)[viewIndex];
+  if (src === undefined) return 0;
+  return useDocumentStore.getState().rotations[src] ?? 0;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -91,8 +103,6 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   scale: DEFAULT_SCALE,
   fitMode: null,
   zoomAnchor: null,
-  rotationDoc: 0,
-  rotationByPage: {},
   currentPage: 0,
   scrollYPt: null,
   scrollTarget: null,
@@ -107,16 +117,34 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     });
   },
 
-  rotateDoc: () =>
-    set((s) => ({ rotationDoc: ((s.rotationDoc + 90) % 360) as Rotation })),
+  // Rotation is a document edit (undoable, saved into the file), not view
+  // state — these actions produce commands on the document stack.
+  rotateDoc: () => {
+    const order = pageOrderOf(get());
+    const rotations = useDocumentStore.getState().rotations;
+    const before: Record<number, Rotation> = {};
+    const after: Record<number, Rotation> = {};
+    for (const src of order) {
+      before[src] = rotations[src] ?? 0;
+      after[src] = ((before[src] + 90) % 360) as Rotation;
+    }
+    useDocumentStore
+      .getState()
+      .execute(rotatePages(before, after, "Rotate document"));
+  },
 
-  rotatePage: (pageIndex) =>
-    set((s) => ({
-      rotationByPage: {
-        ...s.rotationByPage,
-        [pageIndex]: (((s.rotationByPage[pageIndex] ?? 0) + 90) % 360) as Rotation,
-      },
-    })),
+  rotatePage: (viewIndex) => {
+    const src = pageOrderOf(get())[viewIndex];
+    if (src === undefined) return;
+    const current = useDocumentStore.getState().rotations[src] ?? 0;
+    useDocumentStore.getState().execute(
+      rotatePages(
+        { [src]: current },
+        { [src]: ((current + 90) % 360) as Rotation },
+        `Rotate page ${viewIndex + 1}`,
+      ),
+    );
+  },
 
   setCurrentPage: (pageIndex) =>
     get().currentPage === pageIndex ? undefined : set({ currentPage: pageIndex }),
@@ -143,8 +171,6 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       error: null,
       scale: DEFAULT_SCALE,
       fitMode: null,
-      rotationDoc: 0,
-      rotationByPage: {},
       currentPage: 0,
       scrollYPt: null,
       zoomAnchor: null,
@@ -210,8 +236,6 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       error: null,
       scale: DEFAULT_SCALE,
       fitMode: null,
-      rotationDoc: 0,
-      rotationByPage: {},
       currentPage: 0,
       scrollYPt: null,
       zoomAnchor: null,

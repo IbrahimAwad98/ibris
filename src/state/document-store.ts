@@ -3,9 +3,17 @@
 // Records are plain data (JSON-safe) so the whole stack can be written to a
 // crash-recovery sidecar; behaviour lives in the switch tables below, keyed
 // by record type, and every type must have an inverse to compile.
+//
+// Page structure (M3) is a *source-page indirection*: `pageOrder[i]` is the
+// engine page shown in view slot i, and `rotations` is keyed by source
+// page. Annotations reference source pages, so reordering moves them with
+// their page by construction; deleting a page hides it (and its
+// annotations) from the order — the save pipeline materialises the final
+// structure.
 import { create } from "zustand";
 import type { Annotation, AnnotationId } from "../lib/annotations";
 import { annotationNoun } from "../lib/annotations";
+import type { Rotation } from "../lib/coords";
 import type { FileFingerprint } from "../ipc/sidecar";
 
 export type CommandRecord =
@@ -26,25 +34,56 @@ export type CommandRecord =
       label: string;
       type: "modify-annotation";
       payload: { before: Annotation; after: Annotation };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "set-page-order";
+      payload: { before: number[]; after: number[] };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "rotate-pages";
+      payload: {
+        before: Record<number, Rotation>;
+        after: Record<number, Rotation>;
+      };
     };
 
 type Annotations = Record<AnnotationId, Annotation>;
 
-function applyRecord(annotations: Annotations, record: CommandRecord): Annotations {
+/** The state commands operate on. */
+interface EditCore {
+  annotations: Annotations;
+  /** View slot → source (engine) page index; null before a doc is loaded. */
+  pageOrder: number[] | null;
+  /** Rotation per *source* page; missing = 0. Saved into the file. */
+  rotations: Record<number, Rotation>;
+}
+
+function applyRecord(core: EditCore, record: CommandRecord): EditCore {
   switch (record.type) {
     case "add-annotation": {
       const a = record.payload.annotation;
-      return { ...annotations, [a.id]: a };
+      return { ...core, annotations: { ...core.annotations, [a.id]: a } };
     }
     case "remove-annotation": {
-      const next = { ...annotations };
-      delete next[record.payload.annotation.id];
-      return next;
+      const annotations = { ...core.annotations };
+      delete annotations[record.payload.annotation.id];
+      return { ...core, annotations };
     }
     case "modify-annotation": {
       const a = record.payload.after;
-      return { ...annotations, [a.id]: a };
+      return { ...core, annotations: { ...core.annotations, [a.id]: a } };
     }
+    case "set-page-order":
+      return { ...core, pageOrder: record.payload.after };
+    case "rotate-pages":
+      return {
+        ...core,
+        rotations: { ...core.rotations, ...record.payload.after },
+      };
   }
 }
 
@@ -57,13 +96,15 @@ function invertRecord(record: CommandRecord): CommandRecord {
     case "remove-annotation":
       return { ...record, type: "add-annotation" };
     case "modify-annotation":
+    case "set-page-order":
+    case "rotate-pages":
       return {
         ...record,
         payload: {
           before: record.payload.after,
           after: record.payload.before,
         },
-      };
+      } as CommandRecord;
   }
 }
 
@@ -77,8 +118,7 @@ export const MAX_STACK = 500;
 const SAVED_UNREACHABLE = -1;
 
 /** Everything a tab snapshot or sidecar needs to put the stack back. */
-export interface DocumentSnapshot {
-  annotations: Annotations;
+export interface DocumentSnapshot extends EditCore {
   commands: CommandRecord[];
   cursor: number;
   savedCursor: number;
@@ -96,6 +136,9 @@ export interface DocumentState extends DocumentSnapshot {
   canUndo: () => boolean;
   canRedo: () => boolean;
   isDirty: () => boolean;
+  /** Identity page order for a freshly opened doc (no-op when a sidecar
+   * already restored a structure). */
+  initStructure: (pageCount: number) => void;
   /** Records a completed save: the cursor position and the /NM ids now
    * living in the file, plus the file's fresh fingerprint. */
   markSaved: (savedIds: string[], fingerprint: FileFingerprint | null) => void;
@@ -106,8 +149,18 @@ export interface DocumentState extends DocumentSnapshot {
   snapshot: () => DocumentSnapshot;
 }
 
+function core(state: DocumentState): EditCore {
+  return {
+    annotations: state.annotations,
+    pageOrder: state.pageOrder,
+    rotations: state.rotations,
+  };
+}
+
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   annotations: {},
+  pageOrder: null,
+  rotations: {},
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -115,7 +168,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   fingerprint: null,
 
   execute: (record) => {
-    const { annotations, commands, cursor, savedCursor } = get();
+    const { commands, cursor, savedCursor } = get();
     let nextCommands = [...commands.slice(0, cursor), record];
     // Executing past an undo discards the redo tail; a saved state that
     // lived in that tail is gone for good.
@@ -125,7 +178,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       nextSaved = nextSaved <= 0 ? SAVED_UNREACHABLE : nextSaved - 1;
     }
     set({
-      annotations: applyRecord(annotations, record),
+      ...applyRecord(core(get()), record),
       commands: nextCommands,
       cursor: nextCommands.length,
       savedCursor: nextSaved,
@@ -133,20 +186,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   undo: () => {
-    const { annotations, commands, cursor } = get();
+    const { commands, cursor } = get();
     if (cursor === 0) return;
     const record = commands[cursor - 1];
     set({
-      annotations: applyRecord(annotations, invertRecord(record)),
+      ...applyRecord(core(get()), invertRecord(record)),
       cursor: cursor - 1,
     });
   },
 
   redo: () => {
-    const { annotations, commands, cursor } = get();
+    const { commands, cursor } = get();
     if (cursor >= commands.length) return;
     set({
-      annotations: applyRecord(annotations, commands[cursor]),
+      ...applyRecord(core(get()), commands[cursor]),
       cursor: cursor + 1,
     });
   },
@@ -160,12 +213,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   canUndo: () => get().cursor > 0,
   canRedo: () => get().cursor < get().commands.length,
   isDirty: () => get().cursor !== get().savedCursor,
+
+  initStructure: (pageCount) => {
+    if (get().pageOrder !== null) return;
+    set({ pageOrder: Array.from({ length: pageCount }, (_, i) => i) });
+  },
+
   markSaved: (savedIds, fingerprint) =>
     set({ savedCursor: get().cursor, savedIds, fingerprint }),
 
   reset: () =>
     set({
       annotations: {},
+      pageOrder: null,
+      rotations: {},
       commands: [],
       cursor: 0,
       savedCursor: 0,
@@ -176,8 +237,24 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   restore: (snapshot, fingerprint) => set({ ...snapshot, fingerprint }),
 
   snapshot: () => {
-    const { annotations, commands, cursor, savedCursor, savedIds } = get();
-    return { annotations, commands, cursor, savedCursor, savedIds };
+    const {
+      annotations,
+      pageOrder,
+      rotations,
+      commands,
+      cursor,
+      savedCursor,
+      savedIds,
+    } = get();
+    return {
+      annotations,
+      pageOrder,
+      rotations,
+      commands,
+      cursor,
+      savedCursor,
+      savedIds,
+    };
   },
 }));
 
@@ -209,6 +286,35 @@ export function modifyAnnotation(
     id: crypto.randomUUID(),
     type: "modify-annotation",
     label: `Edit ${annotationNoun(after)}`,
+    payload: { before, after },
+  };
+}
+
+export function setPageOrder(
+  before: number[],
+  after: number[],
+  label: string,
+): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "set-page-order",
+    label,
+    payload: { before, after },
+  };
+}
+
+/** `before` MUST hold an explicit entry (0 included) for every page in
+ * `after` — apply/invert merge these records over `rotations`, so a
+ * missing key would survive undo. */
+export function rotatePages(
+  before: Record<number, Rotation>,
+  after: Record<number, Rotation>,
+  label: string,
+): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "rotate-pages",
+    label,
     payload: { before, after },
   };
 }

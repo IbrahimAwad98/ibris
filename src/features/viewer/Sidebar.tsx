@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOutline, type OutlineNode } from "../../ipc/pdf";
 import { HistoryPanel } from "../annotations/HistoryPanel";
+import { useDocumentStore } from "../../state/document-store";
 import { navigateToMatch, useSearchStore } from "../../state/search-store";
 import { useUiStore, type SidebarTab } from "../../state/ui-store";
-import { useViewerStore } from "../../state/viewer-store";
+import { pageOrderOf, useViewerStore } from "../../state/viewer-store";
 
 /** Collapsible, resizable sidebar: thumbnails, outline, search results. */
 export function Sidebar() {
@@ -122,15 +123,20 @@ export function Sidebar() {
 // ~300 tiny canvases is fine; virtualize if 1000+-page docs ever hitch.
 function ThumbnailList() {
   const pages = useViewerStore((s) => s.pages);
+  const docOrder = useDocumentStore((s) => s.pageOrder);
   const currentPage = useViewerStore((s) => s.currentPage);
   const scrollToPage = useViewerStore((s) => s.scrollToPage);
+  const order = (docOrder ?? pages.map((_, i) => i)).filter(
+    (src) => src < pages.length,
+  );
 
   return (
     <div style={{ padding: 8 }}>
-      {pages.map((_, i) => (
+      {order.map((src, i) => (
         <Thumbnail
-          key={i}
-          pageIndex={i}
+          key={src}
+          pageIndex={src}
+          label={i + 1}
           active={i === currentPage}
           onClick={() => scrollToPage(i)}
         />
@@ -141,10 +147,14 @@ function ThumbnailList() {
 
 function Thumbnail({
   pageIndex,
+  label,
   active,
   onClick,
 }: {
+  /** Source page (previews are keyed by it). */
   pageIndex: number;
+  /** 1-based position in the current view order. */
+  label: number;
   active: boolean;
   onClick: () => void;
 }) {
@@ -181,21 +191,26 @@ function Thumbnail({
           background: dark ? "#000" : "#fff",
         }}
       />
-      <div style={{ fontSize: 11, opacity: 0.7 }}>{pageIndex + 1}</div>
+      <div style={{ fontSize: 11, opacity: 0.7 }}>{label}</div>
     </div>
   );
 }
 
 function OutlineList({ nodes, depth }: { nodes: OutlineNode[]; depth: number }) {
   const scrollToPage = useViewerStore((s) => s.scrollToPage);
+  // Outline targets are source pages; scrolling wants view slots.
+  const toView = (src: number) =>
+    pageOrderOf(useViewerStore.getState()).indexOf(src);
   return (
     <div style={{ padding: depth === 0 ? 8 : 0 }}>
       {nodes.map((node, i) => (
         <div key={i}>
           <div
-            onClick={() =>
-              node.pageIndex !== null && scrollToPage(node.pageIndex)
-            }
+            onClick={() => {
+              if (node.pageIndex === null) return;
+              const view = toView(node.pageIndex);
+              if (view !== -1) scrollToPage(view);
+            }}
             style={{
               padding: "4px 8px",
               paddingLeft: 8 + depth * 16,

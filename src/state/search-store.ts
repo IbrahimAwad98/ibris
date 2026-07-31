@@ -5,7 +5,7 @@ import {
   searchRange,
   type SearchMatch,
 } from "../ipc/pdf";
-import { useViewerStore } from "./viewer-store";
+import { pageOrderOf, useViewerStore } from "./viewer-store";
 
 /** Pages per engine request: small enough that first results are ~instant. */
 const CHUNK_PAGES = 10;
@@ -126,7 +126,9 @@ export const useSearchStore = create<SearchState>((set, get) => ({
 
 export function navigateToMatch(match: SearchMatch): void {
   const rect = match.rects[0];
-  useViewerStore
-    .getState()
-    .scrollToPage(match.pageIndex, rect ? rect.y : undefined);
+  const viewer = useViewerStore.getState();
+  // Matches carry source page indexes; scroll targets are view slots.
+  const viewIndex = pageOrderOf(viewer).indexOf(match.pageIndex);
+  if (viewIndex === -1) return; // the page was deleted from the view
+  viewer.scrollToPage(viewIndex, rect ? rect.y : undefined);
 }

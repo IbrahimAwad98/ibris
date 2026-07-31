@@ -21,6 +21,8 @@ function note(id: string): Annotation {
 
 const state = {
   annotations: { n1: note("n1") },
+  pageOrder: [0, 1, 2],
+  rotations: {},
   commands: [],
   cursor: 0,
   savedCursor: 0,
