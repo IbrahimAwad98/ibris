@@ -35,7 +35,7 @@ async fn renders_page_with_real_ink() {
         .expect("open failed");
 
     let page = service
-        .render(doc_id, 0, 2.0, 1)
+        .render(doc_id, 0, 2.0, false, 1)
         .await
         .expect("render failed");
 
@@ -70,6 +70,7 @@ async fn cancelled_request_is_skipped_without_rendering() {
             doc_id,
             page_index: 0,
             scale: 2.0,
+            invert: false,
             cancel: Arc::new(AtomicBool::new(true)),
             reply,
         }))
@@ -85,7 +86,7 @@ async fn cancelled_request_is_skipped_without_rendering() {
 
     // The engine must still serve later requests normally.
     let page = service
-        .render(doc_id, 0, 1.0, 99)
+        .render(doc_id, 0, 1.0, false, 99)
         .await
         .expect("render after cancel failed");
     assert_eq!(page.width, 612);
