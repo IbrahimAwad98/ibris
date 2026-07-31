@@ -12,6 +12,14 @@ vi.mock("../../ipc/pdf", () => ({
 }));
 vi.mock("../../ipc/dialog", () => ({
   pickPdf: vi.fn().mockResolvedValue(null),
+  pickSavePath: vi.fn().mockResolvedValue(null),
+  askUser: vi.fn().mockResolvedValue(true),
+}));
+vi.mock("../../ipc/sidecar", () => ({
+  fileFingerprint: vi.fn().mockResolvedValue(null),
+  sidecarRead: vi.fn().mockResolvedValue(null),
+  sidecarWrite: vi.fn().mockResolvedValue(undefined),
+  sidecarDelete: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { useUiStore } from "../../state/ui-store";

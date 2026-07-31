@@ -2,6 +2,17 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { closeDocument, setActiveDocument } from "../ipc/pdf";
 import {
+  cancelSidecarWrite,
+  flushSidecarWrite,
+  loadEditState,
+  scheduleSidecarWrite,
+} from "./annotation-io";
+import {
+  useDocumentStore,
+  type DocumentSnapshot,
+} from "./document-store";
+import type { FileFingerprint } from "../ipc/sidecar";
+import {
   planRestore,
   pushRecent,
   type RecentEntry,
@@ -44,6 +55,8 @@ interface TabSnapshot {
   viewer: ViewerSnapshot;
   search: SearchSnapshot;
   sidebar: { open: boolean; tab: SidebarTab };
+  document: DocumentSnapshot;
+  fingerprint: FileFingerprint | null;
 }
 
 // In-memory only: previews are ImageBitmaps, which cannot be serialised.
@@ -103,6 +116,8 @@ function takeSnapshot(): TabSnapshot {
       currentIndex: s.currentIndex,
     },
     sidebar: { open: u.sidebarOpen, tab: u.sidebarTab },
+    document: useDocumentStore.getState().snapshot(),
+    fingerprint: useDocumentStore.getState().fingerprint,
   };
 }
 
@@ -127,6 +142,7 @@ function applySnapshot(snap: TabSnapshot): void {
     sidebarOpen: snap.sidebar.open,
     sidebarTab: snap.sidebar.tab,
   });
+  useDocumentStore.getState().restore(snap.document, snap.fingerprint);
   void setActiveDocument(snap.viewer.docId).catch(() => undefined);
   // Refill a preview pass that was cut short by switching away.
   void useViewerStore.getState().resumePreviews();
@@ -171,11 +187,16 @@ function applySavedView(view: SavedView): void {
 /** Opens `path` into the viewer, then flags it visible to the engine —
  * unless the user has already switched to another tab meanwhile. */
 async function openIntoViewer(tabId: string, path: string): Promise<void> {
+  useDocumentStore.getState().reset();
   await useViewerStore.getState().openPath(path);
   if (useTabsStore.getState().activeTabId === tabId) {
     void setActiveDocument(useViewerStore.getState().docId).catch(
       () => undefined,
     );
+    if (useViewerStore.getState().docId !== null) {
+      // Fingerprint + crash-recovery sidecar for the edit state.
+      await loadEditState(path);
+    }
   }
 }
 
@@ -196,6 +217,8 @@ export const useTabsStore = create<TabsState>()(
           return;
         }
         if (activeTabId !== null) {
+          const prev = tabs.find((t) => t.id === activeTabId);
+          if (prev) flushSidecarWrite(prev.path);
           saveActiveView();
           snapshots.set(activeTabId, takeSnapshot());
         }
@@ -228,6 +251,8 @@ export const useTabsStore = create<TabsState>()(
         const tab = tabs.find((t) => t.id === id);
         if (!tab || id === activeTabId) return;
         if (activeTabId !== null) {
+          const prev = tabs.find((t) => t.id === activeTabId);
+          if (prev) flushSidecarWrite(prev.path);
           saveActiveView();
           snapshots.set(activeTabId, takeSnapshot());
         }
@@ -260,9 +285,11 @@ export const useTabsStore = create<TabsState>()(
 
         saveActiveView(); // remember where the user was for next open
         snapshots.delete(id);
+        cancelSidecarWrite();
         const neighbour = remaining[Math.min(idx, remaining.length - 1)];
         if (!neighbour) {
           set({ tabs: [], activeTabId: null });
+          useDocumentStore.getState().reset();
           useSearchStore.getState().clear();
           void setActiveDocument(null).catch(() => undefined);
           await useViewerStore.getState().close(); // resets and closes the doc
@@ -401,6 +428,15 @@ useUiStore.subscribe((state, prev) => {
   }
   useViewerStore.setState({ previews: new Map() });
   void useViewerStore.getState().resumePreviews();
+});
+
+// Any command-stack change schedules a crash-recovery sidecar write for
+// the active tab's document (M2-PLAN §2).
+useDocumentStore.subscribe((state, prev) => {
+  if (state.commands === prev.commands && state.cursor === prev.cursor) return;
+  const { tabs, activeTabId } = useTabsStore.getState();
+  const tab = tabs.find((t) => t.id === activeTabId);
+  if (tab) scheduleSidecarWrite(tab.path);
 });
 
 const VIEW_SAVE_DEBOUNCE_MS = 500;

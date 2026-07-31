@@ -99,7 +99,7 @@ describe("dirty tracking", () => {
     expect(s().isDirty()).toBe(false);
     s().execute(addAnnotation(makeNote("n1")));
     expect(s().isDirty()).toBe(true);
-    s().markSaved();
+    s().markSaved(["n1"], null);
     expect(s().isDirty()).toBe(false);
     s().undo();
     expect(s().isDirty()).toBe(true);
@@ -130,9 +130,16 @@ describe("serialisation", () => {
     };
 
     useDocumentStore.getState().reset();
-    useDocumentStore
-      .getState()
-      .restore(wire.annotations, wire.commands, wire.cursor, 0);
+    useDocumentStore.getState().restore(
+      {
+        annotations: wire.annotations,
+        commands: wire.commands,
+        cursor: wire.cursor,
+        savedCursor: 0,
+        savedIds: [],
+      },
+      null,
+    );
     expect(useDocumentStore.getState().annotations["n1"]).toMatchObject({
       contents: "edited",
     });

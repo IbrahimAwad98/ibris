@@ -21,6 +21,10 @@ pub fn run() {
             commands::pdf::save_annotated,
             commands::pdf::close_document,
             commands::pdf::set_active_document,
+            commands::sidecar::file_fingerprint,
+            commands::sidecar::sidecar_read,
+            commands::sidecar::sidecar_write,
+            commands::sidecar::sidecar_delete,
         ])
         .run(tauri::generate_context!());
 
