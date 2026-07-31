@@ -120,13 +120,19 @@ describe("per-tab state", () => {
     expect(useUiStore.getState().sidebarTab).toBe("search");
   });
 
-  it("restores the tab's position via a scroll target on activation", async () => {
+  it("restores the tab's exact position via a scroll target on activation", async () => {
     await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
-    useViewerStore.setState({ currentPage: 2 });
+    useViewerStore.setState({
+      currentPage: 2,
+      scrollYPt: { page: 2, yPt: 123.4 },
+    });
     await useTabsStore.getState().openTab("C:\\docs\\b.pdf");
 
     useTabsStore.getState().activateTab(tabIds()[0]);
-    expect(useViewerStore.getState().scrollTarget?.page).toBe(2);
+    const target = useViewerStore.getState().scrollTarget;
+    expect(target?.page).toBe(2);
+    expect(target?.yPt).toBeCloseTo(123.4);
+    expect(target?.exact).toBe(true);
   });
 });
 

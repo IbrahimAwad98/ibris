@@ -25,6 +25,7 @@ type ViewerSnapshot = Pick<
   | "rotationDoc"
   | "rotationByPage"
   | "currentPage"
+  | "scrollYPt"
 >;
 
 type SearchSnapshot = Pick<
@@ -73,6 +74,7 @@ function takeSnapshot(): TabSnapshot {
       rotationDoc: v.rotationDoc,
       rotationByPage: v.rotationByPage,
       currentPage: v.currentPage,
+      scrollYPt: v.scrollYPt,
     },
     search: {
       query: s.query,
@@ -92,7 +94,10 @@ function applySnapshot(snap: TabSnapshot): void {
     zoomAnchor: null,
     scrollTarget: null,
   });
-  useViewerStore.getState().scrollToPage(snap.viewer.currentPage);
+  const pos = snap.viewer.scrollYPt;
+  useViewerStore
+    .getState()
+    .scrollToPage(pos?.page ?? snap.viewer.currentPage, pos?.yPt, true);
   useSearchStore.setState((s) => ({
     ...snap.search,
     searching: false,

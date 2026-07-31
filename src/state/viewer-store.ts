@@ -33,8 +33,22 @@ export interface ViewerState {
   rotationByPage: Readonly<Record<number, Rotation>>;
   /** Topmost visible page, kept current by PageList. */
   currentPage: number;
-  /** Pending navigation, consumed by PageList. yPt is a page-top offset in points. */
-  scrollTarget: { page: number; yPt?: number; nonce: number } | null;
+  /**
+   * Live scroll position, written by PageList on scroll: display-space
+   * points below the top of `page`. Snapshotted per tab and per session.
+   */
+  scrollYPt: { page: number; yPt: number } | null;
+  /**
+   * Pending navigation, consumed by PageList. yPt is a page-top offset in
+   * points; `exact` restores it verbatim (tab/session restore) instead of
+   * biasing a third of the viewport down like search-match navigation.
+   */
+  scrollTarget: {
+    page: number;
+    yPt?: number;
+    exact?: boolean;
+    nonce: number;
+  } | null;
   openPath: (path: string) => Promise<void>;
   /** Renders low-res previews for any page that still lacks one. */
   resumePreviews: () => Promise<void>;
@@ -46,7 +60,7 @@ export interface ViewerState {
   rotateDoc: () => void;
   rotatePage: (pageIndex: number) => void;
   setCurrentPage: (pageIndex: number) => void;
-  scrollToPage: (page: number, yPt?: number) => void;
+  scrollToPage: (page: number, yPt?: number, exact?: boolean) => void;
 }
 
 /**
@@ -79,6 +93,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   rotationDoc: 0,
   rotationByPage: {},
   currentPage: 0,
+  scrollYPt: null,
   scrollTarget: null,
 
   setScale: (scale, opts) => {
@@ -105,9 +120,14 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setCurrentPage: (pageIndex) =>
     get().currentPage === pageIndex ? undefined : set({ currentPage: pageIndex }),
 
-  scrollToPage: (page, yPt) =>
+  scrollToPage: (page, yPt, exact) =>
     set((s) => ({
-      scrollTarget: { page, yPt, nonce: (s.scrollTarget?.nonce ?? 0) + 1 },
+      scrollTarget: {
+        page,
+        yPt,
+        exact,
+        nonce: (s.scrollTarget?.nonce ?? 0) + 1,
+      },
     })),
 
   openPath: async (path: string) => {
@@ -125,6 +145,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       rotationDoc: 0,
       rotationByPage: {},
       currentPage: 0,
+      scrollYPt: null,
       zoomAnchor: null,
       scrollTarget: null,
     });
@@ -187,6 +208,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       rotationDoc: 0,
       rotationByPage: {},
       currentPage: 0,
+      scrollYPt: null,
       zoomAnchor: null,
       scrollTarget: null,
     });
