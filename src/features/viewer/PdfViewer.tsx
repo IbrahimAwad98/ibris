@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { useTabsStore } from "../../state/tabs-store";
 import { useUiStore } from "../../state/ui-store";
 import { useViewerStore } from "../../state/viewer-store";
 import { PageList } from "./PageList";
@@ -10,7 +11,7 @@ import { Toolbar } from "./Toolbar";
 export function PdfViewer() {
   const docId = useViewerStore((s) => s.docId);
   const error = useViewerStore((s) => s.error);
-  const openPath = useViewerStore((s) => s.openPath);
+  const openTab = useTabsStore((s) => s.openTab);
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const focusSearch = useUiStore((s) => s.focusSearch);
   const [pathInput, setPathInput] = useState("");
@@ -30,8 +31,8 @@ export function PdfViewer() {
   // Dev convenience: VITE_OPEN_PDF=<path> npm run dev auto-opens a file.
   useEffect(() => {
     const devPath = import.meta.env.VITE_OPEN_PDF as string | undefined;
-    if (devPath) void openPath(devPath);
-  }, [openPath]);
+    if (devPath) void openTab(devPath);
+  }, [openTab]);
 
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -39,13 +40,13 @@ export function PdfViewer() {
         const pdf = event.payload.paths.find((p) =>
           p.toLowerCase().endsWith(".pdf"),
         );
-        if (pdf) void openPath(pdf);
+        if (pdf) void openTab(pdf);
       }
     });
     return () => {
       void unlisten.then((f) => f());
     };
-  }, [openPath]);
+  }, [openTab]);
 
   if (docId !== null) {
     return (
@@ -76,7 +77,7 @@ export function PdfViewer() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (pathInput.trim()) void openPath(pathInput.trim());
+          if (pathInput.trim()) void openTab(pathInput.trim());
         }}
         style={{ display: "flex", gap: 8 }}
       >
