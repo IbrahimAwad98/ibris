@@ -248,6 +248,44 @@ describe("session restore", () => {
   });
 });
 
+describe("debounced view persistence", () => {
+  // WebView2 skips beforeunload on several shutdown paths (process kill,
+  // crash, update); the position must be persisted while the user scrolls,
+  // not only at unload.
+  it("persists scroll position without beforeunload ever firing", async () => {
+    await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
+    vi.useFakeTimers();
+    try {
+      useViewerStore.setState({ scrollYPt: { page: 2, yPt: 99 } });
+      expect(
+        useTabsStore.getState().viewByPath["C:\\docs\\a.pdf"],
+      ).toBeUndefined();
+
+      vi.advanceTimersByTime(600);
+      const view = useTabsStore.getState().viewByPath["C:\\docs\\a.pdf"];
+      expect(view?.page).toBe(2);
+      expect(view?.yPt).toBe(99);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("persists zoom and rotation changes the same way", async () => {
+    await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
+    vi.useFakeTimers();
+    try {
+      useViewerStore.getState().setScale(2.75);
+      useViewerStore.getState().rotateDoc();
+      vi.advanceTimersByTime(600);
+      const view = useTabsStore.getState().viewByPath["C:\\docs\\a.pdf"];
+      expect(view?.scale).toBe(2.75);
+      expect(view?.rotationDoc).toBe(90);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("cycling", () => {
   it("next and previous tab wrap around", async () => {
     await useTabsStore.getState().openTab("C:\\docs\\a.pdf");

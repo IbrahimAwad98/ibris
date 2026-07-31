@@ -17,8 +17,9 @@ function App() {
     }
   }, []);
 
-  // The active tab's final scroll position would otherwise die with the
-  // window; everything else is saved on every tab switch.
+  // Best-effort final write only — WebView2 skips beforeunload on kill,
+  // crash, and updater paths. The durable save is the debounced view-state
+  // subscription in tabs-store.
   useEffect(() => {
     const save = () => useTabsStore.getState().saveActiveView();
     window.addEventListener("beforeunload", save);
