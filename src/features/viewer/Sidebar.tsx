@@ -146,18 +146,20 @@ function Thumbnail({
   onClick: () => void;
 }) {
   const preview = useViewerStore((s) => s.previews.get(pageIndex));
+  const dark = useUiStore((s) => s.resolvedTheme === "dark");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    ctx.fillStyle = "#fff";
+    // Previews render pre-inverted in dark mode; match their paper colour.
+    ctx.fillStyle = dark ? "#000" : "#fff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (preview) {
       ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
     }
-  }, [preview]);
+  }, [preview, dark]);
 
   return (
     <div
@@ -173,7 +175,7 @@ function Thumbnail({
           border: active
             ? "2px solid var(--accent-soft)"
             : "2px solid transparent",
-          background: "#fff",
+          background: dark ? "#000" : "#fff",
         }}
       />
       <div style={{ fontSize: 11, opacity: 0.7 }}>{pageIndex + 1}</div>

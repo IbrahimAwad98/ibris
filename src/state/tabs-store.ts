@@ -391,6 +391,18 @@ useViewerStore.subscribe((state, prev) => {
   }
 });
 
+// A theme switch changes what every preview should look like: wipe them
+// (current tab and stored snapshots) and re-render for the new theme.
+// Tiles need no sweep — their cache keys carry the invert bit.
+useUiStore.subscribe((state, prev) => {
+  if (state.resolvedTheme === prev.resolvedTheme) return;
+  for (const snap of snapshots.values()) {
+    snap.viewer.previews = new Map();
+  }
+  useViewerStore.setState({ previews: new Map() });
+  void useViewerStore.getState().resumePreviews();
+});
+
 const VIEW_SAVE_DEBOUNCE_MS = 500;
 let viewSaveTimer: ReturnType<typeof setTimeout> | undefined;
 useViewerStore.subscribe((state, prev) => {
