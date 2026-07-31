@@ -193,6 +193,12 @@ impl PdfService {
         EngineHandle::global().send(EngineMsg::Close { doc_id })
     }
 
+    /// Declares the visible document; its queued engine work runs first.
+    /// `None` (no document open) restores plain FIFO.
+    pub fn set_active(&self, doc_id: Option<u64>) {
+        EngineHandle::global().set_active(doc_id);
+    }
+
     fn lock_cancels(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, HashMap<u64, Arc<AtomicBool>>>, PdfError> {

@@ -172,3 +172,8 @@ export async function getOutline(docId: number): Promise<OutlineNode[]> {
 export async function closeDocument(docId: number): Promise<void> {
   await invoke("close_document", { docId });
 }
+
+/** Hints the engine which document is visible; its queued work runs first. */
+export async function setActiveDocument(docId: number | null): Promise<void> {
+  await invoke("set_active_document", { docId });
+}
