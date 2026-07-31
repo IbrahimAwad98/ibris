@@ -353,3 +353,25 @@ export const useTabsStore = create<TabsState>()(
     },
   ),
 );
+
+// WebView2 skips beforeunload on several shutdown paths (process kill, crash,
+// updater restart), so the unload write in App.tsx is best-effort only. The
+// durable path is here: any view-state change persists on a trailing debounce.
+const VIEW_SAVE_DEBOUNCE_MS = 500;
+let viewSaveTimer: ReturnType<typeof setTimeout> | undefined;
+useViewerStore.subscribe((state, prev) => {
+  if (
+    state.scrollYPt === prev.scrollYPt &&
+    state.scale === prev.scale &&
+    state.fitMode === prev.fitMode &&
+    state.rotationDoc === prev.rotationDoc &&
+    state.rotationByPage === prev.rotationByPage
+  ) {
+    return;
+  }
+  clearTimeout(viewSaveTimer);
+  viewSaveTimer = setTimeout(
+    () => useTabsStore.getState().saveActiveView(),
+    VIEW_SAVE_DEBOUNCE_MS,
+  );
+});
