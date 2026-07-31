@@ -149,7 +149,14 @@ async fn every_annotation_type_round_trips() {
 
     let service = PdfService::new();
     service
-        .save_annotated(path.clone(), annots.clone(), ids.clone())
+        .save_document(
+            path.clone(),
+            path.clone(),
+            vec![0],
+            vec![],
+            annots.clone(),
+            ids.clone(),
+        )
         .await
         .expect("save failed");
 
@@ -224,7 +231,7 @@ async fn every_annotation_type_round_trips() {
 
     // Saving again over the annotated file must not duplicate anything.
     service
-        .save_annotated(path.clone(), annots, ids)
+        .save_document(path.clone(), path.clone(), vec![0], vec![], annots, ids)
         .await
         .expect("second save failed");
     let read2 = service
@@ -252,7 +259,14 @@ async fn appearance_streams_actually_draw() {
 
     let service = PdfService::new();
     service
-        .save_annotated(path.clone(), annots, vec!["id-rect-render".into()])
+        .save_document(
+            path.clone(),
+            path.clone(),
+            vec![0],
+            vec![],
+            annots,
+            vec!["id-rect-render".into()],
+        )
         .await
         .expect("save failed");
 
