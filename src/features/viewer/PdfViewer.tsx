@@ -28,12 +28,6 @@ export function PdfViewer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [focusSearch]);
 
-  // Dev convenience: VITE_OPEN_PDF=<path> npm run dev auto-opens a file.
-  useEffect(() => {
-    const devPath = import.meta.env.VITE_OPEN_PDF as string | undefined;
-    if (devPath) void openTab(devPath);
-  }, [openTab]);
-
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type === "drop") {

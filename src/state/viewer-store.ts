@@ -163,7 +163,9 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       return;
     }
     set({ docId: doc.docId, pages: doc.pages });
-    await get().resumePreviews();
+    // Deliberately not awaited: openPath resolves on metadata so callers
+    // (tab open, session restore) aren't gated on a full preview pass.
+    void get().resumePreviews();
   },
 
   // Progressive pass: one low-res render per page, sequentially, so sharp

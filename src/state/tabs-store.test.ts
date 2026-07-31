@@ -35,7 +35,13 @@ beforeEach(() => {
     pageCount: 3,
     pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
   }));
-  useTabsStore.setState({ tabs: [], activeTabId: null });
+  useTabsStore.setState({
+    tabs: [],
+    activeTabId: null,
+    restored: false,
+    viewByPath: {},
+    recents: [],
+  });
   useViewerStore.setState({
     docId: null,
     pages: [],
@@ -172,6 +178,73 @@ describe("closing", () => {
     expect(useViewerStore.getState().docId).toBeNull();
     expect(mockClose).toHaveBeenCalledWith(100);
     expect(mockSetActive).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe("session restore", () => {
+  it("reopens stored tabs, drops missing files, and applies saved views", async () => {
+    mockOpen.mockImplementation(async (path: string) => {
+      if (path.includes("gone")) {
+        throw { kind: "FileNotFound", path };
+      }
+      return {
+        docId: nextDocId++,
+        pageCount: 3,
+        pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
+      };
+    });
+    useTabsStore.setState({
+      tabs: [
+        { id: "t1", path: "C:\\docs\\a.pdf", title: "a.pdf" },
+        { id: "t2", path: "C:\\docs\\gone.pdf", title: "gone.pdf" },
+        { id: "t3", path: "C:\\docs\\c.pdf", title: "c.pdf" },
+      ],
+      activeTabId: "t2",
+      viewByPath: {
+        "C:\\docs\\a.pdf": {
+          scale: 3,
+          fitMode: null,
+          rotationDoc: 90,
+          rotationByPage: {},
+          page: 1,
+          yPt: 50,
+          sidebarOpen: true,
+          sidebarTab: "outline",
+        },
+      },
+      recents: [
+        {
+          path: "C:\\docs\\gone.pdf",
+          title: "gone.pdf",
+          pageCount: 3,
+          lastOpened: 1,
+        },
+      ],
+    });
+
+    await useTabsStore.getState().restoreSession();
+
+    const s = useTabsStore.getState();
+    expect(s.tabs.map((t) => t.title)).toEqual(["a.pdf", "c.pdf"]);
+    // The missing active tab healed to its left neighbour, a.pdf...
+    expect(s.activeTabId).toBe(s.tabs[0].id);
+    // ...whose saved view state came back with it.
+    expect(useViewerStore.getState().scale).toBe(3);
+    expect(useViewerStore.getState().rotationDoc).toBe(90);
+    expect(useUiStore.getState().sidebarTab).toBe("outline");
+    const missingRecent = s.recents.find((r) => r.path.includes("gone"));
+    expect(missingRecent?.missing).toBe(true);
+  });
+
+  it("records a recent entry when a document opens", async () => {
+    await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
+    const r = useTabsStore.getState().recents;
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({
+      path: "C:\\docs\\a.pdf",
+      title: "a.pdf",
+      pageCount: 3,
+    });
   });
 });
 
