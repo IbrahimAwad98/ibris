@@ -132,3 +132,8 @@ pub async fn get_outline(
 pub async fn close_document(state: State<'_, PdfService>, doc_id: u64) -> Result<(), PdfError> {
     state.close(doc_id)
 }
+
+#[tauri::command]
+pub fn set_active_document(state: State<'_, PdfService>, doc_id: Option<u64>) {
+    state.set_active(doc_id);
+}

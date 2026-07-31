@@ -18,6 +18,7 @@ pub fn run() {
             commands::pdf::cancel_render,
             commands::pdf::cancel_renders,
             commands::pdf::close_document,
+            commands::pdf::set_active_document,
         ])
         .run(tauri::generate_context!());
 
