@@ -70,6 +70,13 @@ export function PageList() {
         }
       }
       setCurrentPage(current);
+      const scale = useViewerStore.getState().scale;
+      useViewerStore.setState({
+        scrollYPt: {
+          page: current,
+          yPt: (el.scrollTop - offsets[current]) / scale,
+        },
+      });
     }
   }, [heights, offsets, setCurrentPage]);
 
@@ -164,14 +171,15 @@ export function PageList() {
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !scrollTarget) return;
-    const { page, yPt } = scrollTarget;
+    const { page, yPt, exact } = scrollTarget;
     if (page < 0 || page >= offsets.length) return;
+    // Exact targets carry display-space offsets (tab/session restore) and
+    // land verbatim; search-match targets carry PDF-space offsets, only
+    // meaningful unrotated, and bias down a third for context.
     const withinPage =
-      yPt !== undefined && rotations[page] === 0 ? yPt * scale : 0;
-    el.scrollTop = Math.max(
-      0,
-      offsets[page] + withinPage - (yPt !== undefined ? el.clientHeight / 3 : 0),
-    );
+      yPt !== undefined && (exact || rotations[page] === 0) ? yPt * scale : 0;
+    const bias = yPt !== undefined && !exact ? el.clientHeight / 3 : 0;
+    el.scrollTop = Math.max(0, offsets[page] + withinPage - bias);
     update();
   }, [scrollTarget, offsets, rotations, scale, update]);
 
