@@ -131,6 +131,57 @@ at the bottom. Branch per milestone; nothing pushed.
   (they render via the page bitmap); no resize handles (move only); note
   contents set at creation, not editable afterwards.
 
+- **2026-07-31 23:57** — **SESSION STOPPED HERE (limit reached).** Final
+  state: branch `feat/m3-page-operations`, last commit 60efe13, everything
+  pushed, full gate green (cargo test incl. 5 new page_restructure tests,
+  clippy -D warnings, fmt, deny licenses; npm test 110, lint, typecheck).
+  Nothing reverted; no broken code committed.
+
+  What landed this session: scroll-persistence fix; M1c run 2 complete
+  (empty state, theming, luminance dark mode, palette + registry); M2
+  complete (command stack, sidecar recovery, annotation engine with /AP
+  round-trip proof, tools UI, history, dirty/close flow); M3 in progress —
+  done: source-page indirection (ce43aac), restructure engine + save flow +
+  thumbnail drag-reorder/multi-select/delete (60efe13).
+
+  MID-FLIGHT / NEXT when resuming, in order:
+  1. **The user's new instruction (arrived at session end, not started):**
+     close the M2 read-only gap — read our own annotations (by /NM) back
+     into the document model on open so they are selectable/movable/
+     deletable/undoable after reopen. Planned approach (worked out, not
+     yet coded): (a) at save, store the annotation's full JSON in a private
+     "IbrisData" string key on the annotation dict; (b) engine open scans a
+     raw load of the bytes for IbrisData entries and returns them with
+     DocumentInfo; (c) the safe viewing document then deletes those annots
+     (in memory only — disk untouched) so the bitmap never double-renders
+     them, via the safe annotations API (verify it exposes name() and
+     delete; if not, fall back to hiding flags — check both before
+     committing to the design); (d) frontend seeds the document store with
+     them + savedIds unless a sidecar restored state. Tests: engine test
+     (reopen returns parseable annotations and the viewing render no
+     longer contains their ink) + store test (delete then undo intact).
+  2. Remaining M3: registry/palette commands for extract current page and
+     merge documents (engine + IPC already exist: `save_document` with a
+     subset order + dest, `merge_documents`); insert-from-file; split;
+     an M3 frontend test that reorder+undo restores order AND annotations
+     (store-level; engine side already proven in page_restructure.rs).
+  3. Investigate the "Underline active on launch" oddity (may be stray
+     persisted dev state in the WebView2 profile's ibris-tools key —
+     inspect localStorage before assuming a code bug).
+  4. DECISIONS.md entries owed: documents-open-from-bytes; raw-FFI save
+     pipeline + IbrisData once implemented; structural-save rebase
+     (undo reset) semantics.
+  5. HANDOFF.md was NOT written — this entry is the handoff. First command
+     to run when resuming: `cd D:\dev\ibris && git status && npm test --
+     --run` then `cd src-tauri && cargo test` to confirm the base.
+
+  Untested/manual (accumulate into the checklist): everything interactive
+  from M2/M3 UI (draw tools, drag-reorder, close prompt, palette) — the
+  logic is store-tested and the engine round-trips are proven, but no
+  synthetic input means no end-to-end UI verification; third-party reader
+  rendering of our annotations (Acrobat/Edge); Ctrl+Tab under WebView2;
+  light-theme + palette screenshots.
+
 - **2026-07-31 23:33** — **M2 COMPLETE.** Visual proof captured
   (`screenshots/viewer-annotations.png`): the round-trip test's saved file
   opened in the real app — every annotation type renders from its /AP
