@@ -1,3 +1,14 @@
+:root {
+  --bg: #404046;
+  --bg-chrome: #242428;
+  --bg-raised: #2f2f34;
+  --border: #55555c;
+  --border-deep: #26262a;
+  --text: #ececec;
+  --text-dim: #a8a8ae;
+  --accent: #3a84ff;
+}
+
 html,
 body,
 #root {
@@ -7,12 +18,220 @@ body,
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background: #404046;
-  color: #ececec;
+  background: var(--bg);
+  color: var(--text);
   overflow: hidden;
 }
 
 .textlayer span::selection {
   background: rgba(58, 132, 255, 0.35);
   color: transparent;
+}
+
+button:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- Empty state ------------------------------------------------------- */
+
+.empty {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 40px;
+  box-sizing: border-box;
+}
+
+.empty-inner {
+  width: 100%;
+  max-width: 720px;
+  margin: auto 0; /* vertically centred until the recents grid needs room */
+}
+
+.empty-mark {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.empty-word {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 32px;
+  letter-spacing: 0.01em;
+}
+
+.empty-actions {
+  margin-top: 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.12);
+}
+
+.empty-hint {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.recents-label {
+  margin: 44px 0 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.recents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 18px;
+}
+
+.recent-card {
+  position: relative;
+}
+
+.recent-open {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.recent-open:disabled {
+  cursor: default;
+}
+
+.recent-thumb {
+  aspect-ratio: 17 / 22;
+  border-radius: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: border-color 120ms, transform 120ms;
+}
+
+.recent-open:not(:disabled):hover .recent-thumb {
+  border-color: var(--border);
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recent-thumb {
+    transition: none;
+  }
+}
+
+.recent-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  background: #fff;
+}
+
+.recent-thumb-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-dim);
+  font-size: 20px;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.recent-thumb-count small {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.recent-title {
+  margin-top: 8px;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-meta {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.recent-card.missing .recent-thumb,
+.recent-card.missing .recent-title,
+.recent-card.missing .recent-meta {
+  opacity: 0.5;
+}
+
+.recent-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-chrome);
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.recent-remove:hover {
+  color: var(--text);
+}
+
+/* ---- Drag-and-drop affordance ------------------------------------------ */
+
+.drop-overlay {
+  position: fixed;
+  inset: 8px;
+  z-index: 20;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: rgba(58, 132, 255, 0.08);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-overlay span {
+  background: var(--bg-chrome);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
 }

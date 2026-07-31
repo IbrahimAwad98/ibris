@@ -246,6 +246,12 @@ describe("session restore", () => {
       pageCount: 3,
     });
   });
+
+  it("removes a recent entry by path", async () => {
+    await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
+    useTabsStore.getState().removeRecent("C:\\docs\\a.pdf");
+    expect(useTabsStore.getState().recents).toHaveLength(0);
+  });
 });
 
 describe("debounced view persistence", () => {
