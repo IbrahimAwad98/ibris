@@ -67,6 +67,8 @@ export interface TabsState {
   prevTab: () => void;
   /** Writes the active tab's live view state into viewByPath. */
   saveActiveView: () => void;
+  /** Drops an entry from the recents list. */
+  removeRecent: (path: string) => void;
   /** Reopens the persisted tab set, dropping files that no longer exist. */
   restoreSession: () => Promise<void>;
 }
@@ -303,6 +305,9 @@ export const useTabsStore = create<TabsState>()(
         });
       },
 
+      removeRecent: (path) =>
+        set({ recents: get().recents.filter((r) => r.path !== path) }),
+
       restoreSession: async () => {
         if (get().restored) return;
         set({ restored: true });
@@ -357,6 +362,35 @@ export const useTabsStore = create<TabsState>()(
 // WebView2 skips beforeunload on several shutdown paths (process kill, crash,
 // updater restart), so the unload write in App.tsx is best-effort only. The
 // durable path is here: any view-state change persists on a trailing debounce.
+// Recents thumbnails: captured from the page-0 preview bitmap once per open
+// (fresh bitmap per open, so a changed first page refreshes the thumbnail).
+const capturedPreviews = new WeakSet<ImageBitmap>();
+useViewerStore.subscribe((state, prev) => {
+  if (state.previews === prev.previews) return;
+  const bmp = state.previews.get(0);
+  if (!bmp || capturedPreviews.has(bmp)) return;
+  const { tabs, activeTabId, recents } = useTabsStore.getState();
+  const tab = tabs.find((t) => t.id === activeTabId);
+  if (!tab || !recents.some((r) => r.path === tab.path)) return;
+  capturedPreviews.add(bmp);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bmp.width;
+    canvas.height = bmp.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(bmp, 0, 0);
+    const thumbnail = canvas.toDataURL("image/jpeg", 0.7);
+    useTabsStore.setState({
+      recents: recents.map((r) =>
+        r.path === tab.path ? { ...r, thumbnail } : r,
+      ),
+    });
+  } catch {
+    // Canvas or storage-quota failure: the card falls back to a placeholder.
+  }
+});
+
 const VIEW_SAVE_DEBOUNCE_MS = 500;
 let viewSaveTimer: ReturnType<typeof setTimeout> | undefined;
 useViewerStore.subscribe((state, prev) => {
