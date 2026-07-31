@@ -4,9 +4,9 @@ import { zoomIn, zoomOut, fitPageScale, fitWidthScale } from "../../lib/zoom";
 import { PAGE_GAP } from "../../state/viewer-store";
 
 const btn: React.CSSProperties = {
-  background: "#2f2f34",
-  color: "#ececec",
-  border: "1px solid #55555c",
+  background: "var(--bg-raised)",
+  color: "var(--text)",
+  border: "1px solid var(--border)",
   borderRadius: 4,
   padding: "4px 10px",
   cursor: "pointer",
@@ -52,8 +52,8 @@ export function Toolbar() {
         alignItems: "center",
         gap: 8,
         padding: "6px 12px",
-        background: "#242428",
-        borderBottom: "1px solid #55555c",
+        background: "var(--bg-chrome)",
+        borderBottom: "1px solid var(--border)",
         userSelect: "none",
       }}
     >
@@ -75,7 +75,9 @@ export function Toolbar() {
       <button style={btn} onClick={() => fit("page")} title="Fit page (Ctrl+0)">
         Fit page
       </button>
-      <div style={{ width: 1, alignSelf: "stretch", background: "#55555c" }} />
+      <div
+        style={{ width: 1, alignSelf: "stretch", background: "var(--border)" }}
+      />
       <button style={btn} onClick={() => rotatePage(currentPage)} title="Rotate current page">
         ⟳ Page
       </button>
@@ -85,6 +87,13 @@ export function Toolbar() {
       <span style={{ marginLeft: "auto", fontSize: 13, opacity: 0.7 }}>
         Page {Math.min(currentPage + 1, pageCount)} / {pageCount}
       </span>
+      <button
+        style={btn}
+        onClick={useUiStore.getState().toggleTheme}
+        title="Toggle light/dark theme"
+      >
+        ◐
+      </button>
     </div>
   );
 }
