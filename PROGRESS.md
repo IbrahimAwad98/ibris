@@ -81,3 +81,25 @@ at the bottom. Branch per milestone; nothing pushed.
   with explicit /AP appearance streams as the interop cornerstone,
   save-time conflict policy, and an explicit not-doing list. Switching to
   branch feat/m2-annotations.
+
+- **2026-07-31 22:55** — M2 step 1 done: command stack core
+  (document-store.ts) with plain-data records, type-keyed apply/invert,
+  stack cap with saved-cursor aging; 8 unit tests. Surveyed pdfium-render
+  0.9.3's annotation surface: safe wrappers create most subtypes but not
+  line/circle, and expose no /NM, /CA, or /AP setters — the raw bindings
+  trait exposes everything needed (FPDFPage_CreateAnnot, SetRect, SetColor
+  with alpha, AppendAttachmentPoints, AddInkStroke, SetStringValue, SetAP,
+  SaveAsCopy). Decision: the save path runs as a raw-FFI pipeline on the
+  engine thread against a fresh load of the disk file; the viewing document
+  is untouched and never reloaded, so undo survives saves and overlay
+  annotations never double-render. Delete-by-NM-then-write makes saves
+  idempotent. Also: documents will open from bytes so Windows file locks
+  don't block the save rename. M2-PLAN.md sections 3 and 4 revised
+  accordingly (foreign annotations now fully read-only in M2).
+
+- **2026-07-31 22:58** — Read the new instructions: pushing enabled
+  (feature branches only, no merges to main, gate-passing commits only).
+  Pushed feat/m1c-shell and feat/m2-annotations. Honest note: commit
+  aa9b042 (stack core) fails `npm run typecheck` in isolation — a test
+  type too wide, fixed in the very next commit b-fix on the same push;
+  every commit from here on gets the gate before commit, not after.

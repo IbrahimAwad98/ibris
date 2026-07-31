@@ -32,43 +32,21 @@ export type Annotation = AnnotationBase &
     | { kind: "highlight" | "underline" | "strikeout"; quads: Rect[] }
     | { kind: "ink"; strokes: Point[][]; strokeWidth: number }
     | { kind: "note"; at: Point; contents: string }
-    | {
-        kind: "shape";
-        shape: "rect" | "ellipse";
-        rect: Rect;
-        strokeWidth: number;
-        fill?: string;
-      }
-    | {
-        kind: "shape";
-        shape: "line" | "arrow";
-        from: Point;
-        to: Point;
-        strokeWidth: number;
-      }
+    | { kind: "rect" | "ellipse"; rect: Rect; strokeWidth: number; fill?: string }
+    | { kind: "line" | "arrow"; from: Point; to: Point; strokeWidth: number }
     | { kind: "stamp"; rect: Rect; stamp: StampName }
   );
 
 /** Human label for the undo history, e.g. "Add highlight". */
 export function annotationNoun(a: Annotation): string {
   switch (a.kind) {
-    case "highlight":
-      return "highlight";
-    case "underline":
-      return "underline";
     case "strikeout":
       return "strikethrough";
     case "ink":
       return "ink stroke";
-    case "note":
-      return "note";
-    case "shape":
-      return a.shape === "rect"
-        ? "rectangle"
-        : a.shape === "ellipse"
-          ? "ellipse"
-          : a.shape;
-    case "stamp":
-      return "stamp";
+    case "rect":
+      return "rectangle";
+    default:
+      return a.kind;
   }
 }
