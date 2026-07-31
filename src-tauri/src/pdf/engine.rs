@@ -124,12 +124,24 @@ pub enum EngineMsg {
         doc_id: u64,
         reply: oneshot::Sender<Result<Vec<OutlineNode>, PdfError>>,
     },
-    /// Applies annotations to the on-disk file and rewrites it (pdf/save.rs).
-    /// Works on a fresh load of the file; the viewing document is untouched.
-    SaveAnnotated {
-        path: PathBuf,
+    /// Applies structure + annotations to the file at `src_path` and writes
+    /// the result to `dest_path` (pdf/save.rs). Works on a fresh load; the
+    /// viewing document is untouched.
+    SaveDocument {
+        src_path: PathBuf,
+        dest_path: PathBuf,
+        /// Final page sequence as source indexes; omissions are deletions.
+        order: Vec<u16>,
+        /// Extra clockwise rotation in degrees per source page.
+        rotations: Vec<(u16, u16)>,
         annotations: Vec<super::annot::AnnotationData>,
         our_ids: Vec<String>,
+        reply: oneshot::Sender<Result<(), PdfError>>,
+    },
+    /// Concatenates whole files into a new document.
+    MergeDocuments {
+        paths: Vec<PathBuf>,
+        dest_path: PathBuf,
         reply: oneshot::Sender<Result<(), PdfError>>,
     },
     /// Enumerates the annotations of the file at `path` (fresh raw load).
@@ -149,7 +161,8 @@ impl EngineMsg {
     fn doc_id(&self) -> Option<u64> {
         match self {
             EngineMsg::Open { .. }
-            | EngineMsg::SaveAnnotated { .. }
+            | EngineMsg::SaveDocument { .. }
+            | EngineMsg::MergeDocuments { .. }
             | EngineMsg::ReadAnnotations { .. } => None,
             EngineMsg::Render(r) => Some(r.doc_id),
             EngineMsg::RenderTile(r) => Some(r.doc_id),
@@ -396,8 +409,11 @@ fn engine_main(queue: Arc<EngineQueue>) {
                     .map(outline_of);
                 let _ = reply.send(result);
             }
-            EngineMsg::SaveAnnotated {
-                path,
+            EngineMsg::SaveDocument {
+                src_path,
+                dest_path,
+                order,
+                rotations,
                 annotations,
                 our_ids,
                 reply,
@@ -407,7 +423,27 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 let result = pdfium().map(|_| ()).and_then(|()| {
                     struct Access;
                     impl PdfiumLibraryBindingsAccessor<'static> for Access {}
-                    super::save::save_annotated(Access.bindings(), &path, &annotations, &our_ids)
+                    super::save::save_document(
+                        Access.bindings(),
+                        &src_path,
+                        &dest_path,
+                        &order,
+                        &rotations,
+                        &annotations,
+                        &our_ids,
+                    )
+                });
+                let _ = reply.send(result);
+            }
+            EngineMsg::MergeDocuments {
+                paths,
+                dest_path,
+                reply,
+            } => {
+                let result = pdfium().map(|_| ()).and_then(|()| {
+                    struct Access;
+                    impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+                    super::save::merge_documents(Access.bindings(), &paths, &dest_path)
                 });
                 let _ = reply.send(result);
             }
