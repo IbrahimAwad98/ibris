@@ -110,6 +110,8 @@ pub fn save_document(
     rotations: &[(u16, u16)],
     annotations: &[AnnotationData],
     our_ids: &[String],
+    field_values: &[super::form::FieldWrite],
+    flatten: bool,
 ) -> Result<(), PdfError> {
     let bytes = std::fs::read(src_path).map_err(|e| PdfError::Io {
         detail: format!("reading {} for save: {e}", src_path.display()),
@@ -122,16 +124,24 @@ pub fn save_document(
                 detail: "the on-disk file could no longer be parsed".into(),
             });
         }
-        let result = build_and_serialise(
-            b,
-            src,
-            bytes.len(),
-            order,
-            inserts,
-            rotations,
-            annotations,
-            our_ids,
-        );
+        // Form values go onto the source document first, before any page
+        // import: baked /V + regenerated appearances travel with pages,
+        // whereas the catalog's /AcroForm registration does not survive
+        // FPDF_ImportPagesByIndex (fields on restructured saves keep
+        // their looks but lose interactivity — decision 016).
+        let result = super::form::apply_form_values(b, src, field_values).and_then(|()| {
+            build_and_serialise(
+                b,
+                src,
+                bytes.len(),
+                order,
+                inserts,
+                rotations,
+                annotations,
+                our_ids,
+                flatten,
+            )
+        });
         b.FPDF_CloseDocument(src);
         result?
     };
@@ -184,6 +194,7 @@ unsafe fn build_and_serialise(
     rotations: &[(u16, u16)],
     annotations: &[AnnotationData],
     our_ids: &[String],
+    flatten: bool,
 ) -> Result<Vec<u8>, PdfError> {
     let src_count = b.FPDF_GetPageCount(src);
     let identity = rotations.iter().all(|(_, deg)| deg % 360 == 0)
@@ -193,6 +204,9 @@ unsafe fn build_and_serialise(
     if identity {
         // Plain annotation save: no structural rebuild needed.
         write_annotations(b, src, annotations, our_ids)?;
+        if flatten {
+            super::form::flatten_all_pages(b, src)?;
+        }
         return doc_to_bytes(b, src, src_size + 64 * 1024);
     }
 
@@ -283,6 +297,9 @@ unsafe fn build_and_serialise(
             .collect();
 
         write_annotations(b, out, &remapped, our_ids)?;
+        if flatten {
+            super::form::flatten_all_pages(b, out)?;
+        }
         doc_to_bytes(b, out, src_size + 64 * 1024)
     })();
     b.FPDF_CloseDocument(out);

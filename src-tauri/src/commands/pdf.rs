@@ -143,6 +143,8 @@ pub async fn save_document(
     rotations: Vec<(u16, u16)>,
     annotations: Vec<crate::pdf::annot::AnnotationData>,
     our_ids: Vec<String>,
+    field_values: Vec<crate::pdf::form::FieldWrite>,
+    flatten: bool,
 ) -> Result<(), PdfError> {
     state
         .save_document(
@@ -153,6 +155,8 @@ pub async fn save_document(
             rotations,
             annotations,
             our_ids,
+            field_values,
+            flatten,
         )
         .await
 }

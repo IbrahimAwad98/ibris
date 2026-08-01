@@ -208,6 +208,8 @@ impl PdfService {
         rotations: Vec<(u16, u16)>,
         annotations: Vec<super::annot::AnnotationData>,
         our_ids: Vec<String>,
+        field_values: Vec<super::form::FieldWrite>,
+        flatten: bool,
     ) -> Result<(), PdfError> {
         let (reply, rx) = oneshot::channel();
         EngineHandle::global().send(EngineMsg::SaveDocument {
@@ -218,6 +220,8 @@ impl PdfService {
             rotations,
             annotations,
             our_ids,
+            field_values,
+            flatten,
             reply,
         })?;
         rx.await.map_err(|_| PdfError::Internal {
