@@ -4,6 +4,7 @@ import {
   nextRequestId,
   openDocument,
   renderPage,
+  type FormInfo,
   type PageSizePt,
 } from "../ipc/pdf";
 
@@ -33,6 +34,8 @@ export interface ViewerState {
   /** Our own saved annotations recovered by the engine at open — consumed
    * by loadEditState to seed the document store (M2-PLAN §8). */
   docAnnotations: Annotation[];
+  /** The document's interactive form, if any (M4). */
+  docForm: FormInfo;
   error: string | null;
   scale: number;
   fitMode: FitMode;
@@ -114,6 +117,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   pages: [],
   previews: new Map<number, ImageBitmap>(),
   docAnnotations: [],
+  docForm: { formType: "none", fields: [] },
   error: null,
   scale: DEFAULT_SCALE,
   fitMode: null,
@@ -185,6 +189,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       pages: [],
       previews: new Map(),
       docAnnotations: [],
+      docForm: { formType: "none", fields: [] },
       error: null,
       scale: DEFAULT_SCALE,
       fitMode: null,
@@ -206,7 +211,12 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       await closeDocument(doc.docId).catch(() => undefined);
       return;
     }
-    set({ docId: doc.docId, pages: doc.pages, docAnnotations: doc.annotations });
+    set({
+      docId: doc.docId,
+      pages: doc.pages,
+      docAnnotations: doc.annotations,
+      docForm: doc.form,
+    });
     // Deliberately not awaited: openPath resolves on metadata so callers
     // (tab open, session restore) aren't gated on a full preview pass.
     void get().resumePreviews();
@@ -251,6 +261,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       pages: [],
       previews: new Map(),
       docAnnotations: [],
+      docForm: { formType: "none", fields: [] },
       error: null,
       scale: DEFAULT_SCALE,
       fitMode: null,

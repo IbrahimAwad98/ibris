@@ -8,6 +8,8 @@ import {
   modifyAnnotation,
   removeAnnotation,
   rotatePages,
+  setField,
+  setFlattenForms,
   setPageOrder,
   useDocumentStore,
 } from "./document-store";
@@ -45,6 +47,8 @@ describe("reopened annotations (M2-PLAN §8)", () => {
         pageOrder: null,
         rotations: {},
         inserts: [],
+        fieldValues: {},
+        flattenForms: false,
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -109,6 +113,36 @@ describe("insert pages from file (M3)", () => {
     useDocumentStore.getState().redo();
     expect(useDocumentStore.getState().pageOrder).toEqual([0, -1, 1]);
     expect(useDocumentStore.getState().inserts).toEqual([page]);
+  });
+});
+
+describe("form fields (M4)", () => {
+  it("set-field round-trips through undo back to the file value", () => {
+    const s = useDocumentStore.getState();
+    s.execute(
+      setField("name", null, { kind: "text", value: "Ibrahim" }, "Fill name"),
+    );
+    expect(useDocumentStore.getState().fieldValues["name"]).toEqual({
+      kind: "text",
+      value: "Ibrahim",
+    });
+
+    useDocumentStore.getState().undo();
+    // Undo to null removes the entry: the field shows its file value.
+    expect(useDocumentStore.getState().fieldValues["name"]).toBeUndefined();
+
+    useDocumentStore.getState().redo();
+    expect(useDocumentStore.getState().fieldValues["name"]).toEqual({
+      kind: "text",
+      value: "Ibrahim",
+    });
+  });
+
+  it("flatten toggles and inverts", () => {
+    useDocumentStore.getState().execute(setFlattenForms(false, true));
+    expect(useDocumentStore.getState().flattenForms).toBe(true);
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().flattenForms).toBe(false);
   });
 });
 
@@ -218,6 +252,8 @@ describe("serialisation", () => {
         pageOrder: null,
         rotations: {},
         inserts: [],
+        fieldValues: {},
+        flattenForms: false,
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,

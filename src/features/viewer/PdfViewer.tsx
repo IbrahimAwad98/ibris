@@ -10,6 +10,27 @@ import { PageList } from "./PageList";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 
+/** Honest signposting for XFA: Ibris renders the static page content but
+ * does not execute XFA form logic — saying so beats rendering it wrong. */
+function XfaBanner() {
+  const formType = useViewerStore((s) => s.docForm.formType);
+  if (formType !== "xfa") return null;
+  return (
+    <div
+      style={{
+        padding: "6px 12px",
+        fontSize: 12,
+        background: "var(--bg-panel)",
+        color: "var(--text-dim)",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      This document uses an XFA form, which Ibris does not support. Pages
+      are shown as static content; form fields cannot be filled.
+    </div>
+  );
+}
+
 /** Document host: the empty state until a tab exists, then the viewer. */
 export function PdfViewer() {
   const docId = useViewerStore((s) => s.docId);
@@ -39,6 +60,7 @@ export function PdfViewer() {
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         <Toolbar />
         <AnnotationToolbar />
+        <XfaBanner />
         <MarkupListener />
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {sidebarOpen && <Sidebar />}
