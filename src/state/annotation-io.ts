@@ -6,7 +6,9 @@ import {
   closeDocument,
   saveDocument as ipcSaveDocument,
   setActiveDocument,
+  type FieldWrite,
 } from "../ipc/pdf";
+import type { FieldState } from "./document-store";
 import {
   fileFingerprint,
   sidecarDelete,
@@ -43,6 +45,8 @@ export async function loadEditState(path: string): Promise<void> {
         pageOrder: null,
         rotations: {},
         inserts: [],
+        fieldValues: {},
+        flattenForms: false,
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -150,6 +154,15 @@ export async function saveSubset(
     annotations,
     ourIds,
     s.inserts.map((p) => ({ path: p.path, pageIndex: p.pageIndex })),
+    fieldWrites(s.fieldValues),
+    false,
+  );
+}
+
+/** The store's edited fields as the wire shape (name folded back in). */
+function fieldWrites(values: Record<string, FieldState>): FieldWrite[] {
+  return Object.entries(values).map(
+    ([name, v]) => ({ ...v, name }) as FieldWrite,
   );
 }
 
@@ -162,10 +175,15 @@ export async function saveToPath(openPath: string, target: string): Promise<void
   const rotations = Object.entries(s.rotations)
     .map(([src, deg]) => [Number(src), deg] as [number, number])
     .filter(([, deg]) => deg % 360 !== 0);
+  const fields = fieldWrites(s.fieldValues);
   const structural =
     rotations.length > 0 ||
     order.length !== sourceCount ||
-    order.some((src, i) => src !== i);
+    order.some((src, i) => src !== i) ||
+    // Field values and flatten change page content on disk; the viewer
+    // must reload so the bitmap matches, which is the rebase path.
+    fields.length > 0 ||
+    s.flattenForms;
 
   const annotations = Object.values(s.annotations);
   const ourIds = [
@@ -179,6 +197,8 @@ export async function saveToPath(openPath: string, target: string): Promise<void
     annotations,
     ourIds,
     s.inserts.map((p) => ({ path: p.path, pageIndex: p.pageIndex })),
+    fields,
+    s.flattenForms,
   );
   const fresh = await fileFingerprint(target).catch(() => null);
   if (target !== openPath) return;
@@ -212,6 +232,8 @@ export async function saveToPath(openPath: string, target: string): Promise<void
       pageOrder: null,
       rotations: {},
       inserts: [], // materialised into the file by this save
+      fieldValues: {}, // baked into the file by this save
+      flattenForms: false,
       commands: [],
       cursor: 0,
       savedCursor: 0,

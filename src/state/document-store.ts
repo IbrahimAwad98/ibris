@@ -14,7 +14,16 @@ import { create } from "zustand";
 import type { Annotation, AnnotationId } from "../lib/annotations";
 import { annotationNoun } from "../lib/annotations";
 import type { Rotation } from "../lib/coords";
+import type { FieldWrite } from "../ipc/pdf";
 import type { FileFingerprint } from "../ipc/sidecar";
+
+/** A form field's edited state, keyed by field name in `fieldValues`.
+ * The wire shape minus the name. */
+export type FieldState = FieldWrite extends infer W
+  ? W extends { name: string }
+    ? Omit<W, "name">
+    : never
+  : never;
 
 /**
  * A page pulled in from another PDF (M3 insert-from-file). It exists only
@@ -73,6 +82,23 @@ export type CommandRecord =
   | {
       id: string;
       label: string;
+      type: "set-field";
+      /** null = the field's baseline (file) value. */
+      payload: {
+        name: string;
+        before: FieldState | null;
+        after: FieldState | null;
+      };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "flatten-forms";
+      payload: { before: boolean; after: boolean };
+    }
+  | {
+      id: string;
+      label: string;
       type: "insert-pages";
       /** `after` references `pages` via insertRef(base + i). Undo swaps
        * the orders; the registered pages stay (unreferenced entries are
@@ -98,6 +124,10 @@ interface EditCore {
   /** Pages inserted from other files, referenced by negative pageOrder
    * entries. Append-only within a session; save materialises them. */
   inserts: InsertedPage[];
+  /** Edited form field values by field name; absent = file value (M4). */
+  fieldValues: Record<string, FieldState>;
+  /** Flatten fields + annotations into page content at the next save. */
+  flattenForms: boolean;
 }
 
 function applyRecord(core: EditCore, record: CommandRecord): EditCore {
@@ -122,6 +152,17 @@ function applyRecord(core: EditCore, record: CommandRecord): EditCore {
         ...core,
         rotations: { ...core.rotations, ...record.payload.after },
       };
+    case "set-field": {
+      const fieldValues = { ...core.fieldValues };
+      if (record.payload.after === null) {
+        delete fieldValues[record.payload.name];
+      } else {
+        fieldValues[record.payload.name] = record.payload.after;
+      }
+      return { ...core, fieldValues };
+    }
+    case "flatten-forms":
+      return { ...core, flattenForms: record.payload.after };
     case "insert-pages": {
       // Registration is idempotent (fixed positions), so redo after undo
       // and inverted records replay safely.
@@ -145,9 +186,12 @@ function invertRecord(record: CommandRecord): CommandRecord {
     case "modify-annotation":
     case "set-page-order":
     case "rotate-pages":
+    case "set-field":
+    case "flatten-forms":
       return {
         ...record,
         payload: {
+          ...record.payload,
           before: record.payload.after,
           after: record.payload.before,
         },
@@ -211,6 +255,8 @@ function core(state: DocumentState): EditCore {
     pageOrder: state.pageOrder,
     rotations: state.rotations,
     inserts: state.inserts,
+    fieldValues: state.fieldValues,
+    flattenForms: state.flattenForms,
   };
 }
 
@@ -219,6 +265,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   pageOrder: null,
   rotations: {},
   inserts: [],
+  fieldValues: {},
+  flattenForms: false,
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -286,6 +334,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       pageOrder: null,
       rotations: {},
       inserts: [],
+      fieldValues: {},
+      flattenForms: false,
       commands: [],
       cursor: 0,
       savedCursor: 0,
@@ -301,6 +351,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       pageOrder,
       rotations,
       inserts,
+      fieldValues,
+      flattenForms,
       commands,
       cursor,
       savedCursor,
@@ -311,6 +363,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       pageOrder,
       rotations,
       inserts,
+      fieldValues,
+      flattenForms,
       commands,
       cursor,
       savedCursor,
@@ -379,6 +433,31 @@ export function insertPages(
     type: "insert-pages",
     label,
     payload: { before, after, base, pages },
+  };
+}
+
+/** Form field edit; `before` null = the field's file value (M4). */
+export function setField(
+  name: string,
+  before: FieldState | null,
+  after: FieldState | null,
+  label: string,
+): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "set-field",
+    label,
+    payload: { name, before, after },
+  };
+}
+
+/** Toggles flatten-at-save for form fields and annotations (M4). */
+export function setFlattenForms(before: boolean, after: boolean): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "flatten-forms",
+    label: after ? "Flatten form and annotations" : "Cancel flatten",
+    payload: { before, after },
   };
 }
 

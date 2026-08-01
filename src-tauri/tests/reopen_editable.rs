@@ -142,6 +142,8 @@ async fn save_one_of_each(service: &PdfService, path: &PathBuf) -> Vec<Annotatio
             vec![],
             annots.clone(),
             ids,
+            vec![],
+            false,
         )
         .await
         .expect("save failed");

@@ -339,3 +339,41 @@ document). No rung loses content.
 path does one extra raw parse of the file. A tool that rewrites /NM
 entirely turns our annotations foreign — visible, uneditable; nothing
 better is possible once identity is gone.
+
+---
+
+## 016 — Forms: fill through PDFium's event pipeline; flatten is all-or-nothing
+
+**Decided:** Form field values live in the command stack (`set-field`,
+undoable) and are written at save by driving PDFium's form-fill
+environment — focus, select-all, replace-selection, kill-focus (space
+keystroke for checkboxes/radios) — on the engine thread. The viewer
+overlays HTML controls (opaque, paper-coloured) over widget rects; the
+page bitmap's own widget appearance is never the source of truth.
+"Flatten" is a single undoable-before-save flag that bakes *all*
+annotations and fields into page content via `FPDFPage_Flatten`.
+
+**Alternatives:** Writing `/V` directly (pdfium-render's `set_value`
+does this) — rejected because nothing regenerates the widget appearance
+stream, so every /AP-honouring reader (PDFium itself, Edge, Preview)
+keeps showing the old value; the M4 test proves regeneration by
+counting rendered glyph pixels. Setting `/NeedAppearances` — PDFium
+exposes no API for it. Fields-only flatten — PDFium's flatten API has
+no such mode; a selective reimplementation means writing appearance
+streams into content streams by hand, which is M6-grade work for a
+niche gain.
+
+**Known degradations, accepted and recorded:** (1) A structural save
+(reorder/delete/insert) imports pages into a fresh document, and the
+catalog `/AcroForm` registration does not survive
+`FPDF_ImportPagesByIndex` — fields keep their appearance but stop being
+interactive in the saved file. Values are applied to the source
+document *before* import so filled state is preserved visually.
+(2) Tab order follows widget enumeration order per page (the `/Tabs`
+key is not honoured), and cannot cross unmounted virtualised pages.
+(3) Multi-select list boxes are treated as single-select.
+
+**Cost:** The fill path is event-driven and therefore order-sensitive;
+each field costs a focus/commit round trip at save (irrelevant at
+human form sizes). XFA is detected and declared unsupported rather
+than approximated.
