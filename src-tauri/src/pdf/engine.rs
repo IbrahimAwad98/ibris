@@ -135,8 +135,11 @@ pub enum EngineMsg {
     SaveDocument {
         src_path: PathBuf,
         dest_path: PathBuf,
-        /// Final page sequence as source indexes; omissions are deletions.
-        order: Vec<u16>,
+        /// Final page sequence as source indexes; omissions are deletions;
+        /// negative entries reference `inserts` (order -(k+1) = inserts[k]).
+        order: Vec<i32>,
+        /// Pages imported from other files.
+        inserts: Vec<super::save::InsertSource>,
         /// Extra clockwise rotation in degrees per source page.
         rotations: Vec<(u16, u16)>,
         annotations: Vec<super::annot::AnnotationData>,
@@ -418,6 +421,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 src_path,
                 dest_path,
                 order,
+                inserts,
                 rotations,
                 annotations,
                 our_ids,
@@ -433,6 +437,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
                         &src_path,
                         &dest_path,
                         &order,
+                        &inserts,
                         &rotations,
                         &annotations,
                         &our_ids,

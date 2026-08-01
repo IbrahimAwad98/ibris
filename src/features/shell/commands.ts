@@ -3,7 +3,7 @@
 // the global keydown handler dispatches from it, so the two can never
 // disagree. Do not bind a shortcut anywhere else.
 import { pickPdf, pickPdfs, pickSavePath } from "../../ipc/dialog";
-import { mergeDocuments } from "../../ipc/pdf";
+import { closeDocument, mergeDocuments, openDocument } from "../../ipc/pdf";
 import { siblingPartPath } from "../../lib/page-ops";
 import { eventMatches, parseShortcut } from "../../lib/shortcuts";
 import {
@@ -12,6 +12,8 @@ import {
   saveToPath,
 } from "../../state/annotation-io";
 import {
+  insertPages,
+  insertRef,
   removeAnnotation,
   useDocumentStore,
 } from "../../state/document-store";
@@ -118,6 +120,44 @@ export function appCommands(): AppCommand[] {
         const a = useDocumentStore.getState().annotations[selectedId];
         if (a) useDocumentStore.getState().execute(removeAnnotation(a));
         setSelectedId(null);
+      },
+    },
+    {
+      id: "insert-pages",
+      label: "Insert pages from file…",
+      enabled: docOpen,
+      run: () => {
+        void pickPdf().then(async (file) => {
+          if (!file) return;
+          // Metadata-only open: page count and sizes for the placeholders.
+          const doc = await openDocument(file);
+          void closeDocument(doc.docId).catch(() => undefined);
+          const s = useDocumentStore.getState();
+          const v = useViewerStore.getState();
+          const before = s.pageOrder ?? v.pages.map((_, i) => i);
+          const base = s.inserts.length;
+          const pages = doc.pages.map((pt, i) => ({
+            path: file,
+            pageIndex: i,
+            width: pt.width,
+            height: pt.height,
+          }));
+          const refs = pages.map((_, i) => insertRef(base + i));
+          const at = Math.min(v.currentPage + 1, before.length);
+          const after = [...before.slice(0, at), ...refs, ...before.slice(at)];
+          const name = file.split(/[\\/]/).pop() ?? file;
+          s.execute(
+            insertPages(
+              before,
+              after,
+              base,
+              pages,
+              pages.length === 1
+                ? `Insert page from ${name}`
+                : `Insert ${pages.length} pages from ${name}`,
+            ),
+          );
+        });
       },
     },
     {

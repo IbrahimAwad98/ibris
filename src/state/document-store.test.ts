@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Annotation } from "../lib/annotations";
 import {
   addAnnotation,
+  insertPages,
+  insertRef,
   MAX_STACK,
   modifyAnnotation,
   removeAnnotation,
@@ -42,6 +44,7 @@ describe("reopened annotations (M2-PLAN §8)", () => {
         annotations: { "saved-1": reopened },
         pageOrder: null,
         rotations: {},
+        inserts: [],
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -86,6 +89,26 @@ describe("page reorder (M3)", () => {
     useDocumentStore.getState().redo();
     expect(useDocumentStore.getState().pageOrder).toEqual([2, 0, 1]);
     expect(useDocumentStore.getState().annotations["n1"]).toEqual(note);
+  });
+});
+
+describe("insert pages from file (M3)", () => {
+  it("insert, undo, redo keeps the order and the registered pages consistent", () => {
+    const s = useDocumentStore.getState();
+    s.initStructure(2);
+    const page = { path: "C:\\docs\\other.pdf", pageIndex: 0, width: 612, height: 792 };
+    s.execute(
+      insertPages([0, 1], [0, insertRef(0), 1], 0, [page], "Insert page"),
+    );
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, -1, 1]);
+    expect(useDocumentStore.getState().inserts).toEqual([page]);
+
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, 1]);
+
+    useDocumentStore.getState().redo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, -1, 1]);
+    expect(useDocumentStore.getState().inserts).toEqual([page]);
   });
 });
 
@@ -194,6 +217,7 @@ describe("serialisation", () => {
         annotations: wire.annotations,
         pageOrder: null,
         rotations: {},
+        inserts: [],
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,

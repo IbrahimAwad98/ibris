@@ -16,12 +16,22 @@
 //! the rename leaves the destination untouched.
 
 use std::os::raw::{c_int, c_ulong, c_void};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use pdfium_render::prelude::*;
+use serde::Deserialize;
 
 use super::annot::{write_annotations, AnnotationData};
 use super::error::PdfError;
+
+/// A page pulled from another file (M3 insert-from-file). Referenced by
+/// negative `order` entries: order value -(k+1) means `inserts[k]`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertSource {
+    pub path: PathBuf,
+    pub page_index: u16,
+}
 
 /// fpdf_save.h: force a full regeneration, never an incremental append.
 const FPDF_NO_INCREMENTAL: u32 = 2;
@@ -85,15 +95,18 @@ fn write_atomically(dest: &Path, bytes: &[u8]) -> Result<(), PdfError> {
 }
 
 /// Saves the document at `src_path` to `dest_path` with pages in `order`
-/// (source indexes; omissions are deletions), extra clockwise `rotations`
-/// (degrees, per source page), and `annotations` (source-page-indexed)
-/// applied. `our_ids` are the /NM ids deleted before writing.
+/// (source indexes; omissions are deletions; negative entries reference
+/// `inserts` — pages imported from other files), extra clockwise
+/// `rotations` (degrees, per own source page), and `annotations`
+/// (source-page-indexed) applied. `our_ids` are the /NM ids deleted
+/// before writing.
 #[allow(clippy::too_many_arguments)] // mirrors the wire format
 pub fn save_document(
     b: &dyn PdfiumLibraryBindings,
     src_path: &Path,
     dest_path: &Path,
-    order: &[u16],
+    order: &[i32],
+    inserts: &[InsertSource],
     rotations: &[(u16, u16)],
     annotations: &[AnnotationData],
     our_ids: &[String],
@@ -109,8 +122,16 @@ pub fn save_document(
                 detail: "the on-disk file could no longer be parsed".into(),
             });
         }
-        let result =
-            build_and_serialise(b, src, bytes.len(), order, rotations, annotations, our_ids);
+        let result = build_and_serialise(
+            b,
+            src,
+            bytes.len(),
+            order,
+            inserts,
+            rotations,
+            annotations,
+            our_ids,
+        );
         b.FPDF_CloseDocument(src);
         result?
     };
@@ -118,11 +139,48 @@ pub fn save_document(
     write_atomically(dest_path, &saved)
 }
 
+/// Documents inserted pages are imported from, loaded once per distinct
+/// path and closed when the save finishes (drop).
+struct InsertDocs<'a> {
+    b: &'a dyn PdfiumLibraryBindings,
+    // Bytes must outlive the FPDF documents parsed from them.
+    loaded: Vec<(PathBuf, Vec<u8>, FPDF_DOCUMENT)>,
+}
+
+impl<'a> InsertDocs<'a> {
+    fn get(&mut self, path: &Path) -> Result<FPDF_DOCUMENT, PdfError> {
+        if let Some((_, _, doc)) = self.loaded.iter().find(|(p, _, _)| p == path) {
+            return Ok(*doc);
+        }
+        let bytes = std::fs::read(path).map_err(|e| PdfError::Io {
+            detail: format!("reading {} for insert: {e}", path.display()),
+        })?;
+        let doc = unsafe { self.b.FPDF_LoadMemDocument64(&bytes, None) };
+        if doc.is_null() {
+            return Err(PdfError::Corrupt {
+                detail: format!("{} could not be parsed", path.display()),
+            });
+        }
+        self.loaded.push((path.to_path_buf(), bytes, doc));
+        Ok(doc)
+    }
+}
+
+impl Drop for InsertDocs<'_> {
+    fn drop(&mut self) {
+        for (_, _, doc) in &self.loaded {
+            unsafe { self.b.FPDF_CloseDocument(*doc) };
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // mirrors save_document
 unsafe fn build_and_serialise(
     b: &dyn PdfiumLibraryBindings,
     src: FPDF_DOCUMENT,
     src_size: usize,
-    order: &[u16],
+    order: &[i32],
+    inserts: &[InsertSource],
     rotations: &[(u16, u16)],
     annotations: &[AnnotationData],
     our_ids: &[String],
@@ -130,7 +188,7 @@ unsafe fn build_and_serialise(
     let src_count = b.FPDF_GetPageCount(src);
     let identity = rotations.iter().all(|(_, deg)| deg % 360 == 0)
         && order.len() == src_count as usize
-        && order.iter().enumerate().all(|(i, s)| i == usize::from(*s));
+        && order.iter().enumerate().all(|(i, s)| *s == i as i32);
 
     if identity {
         // Plain annotation save: no structural rebuild needed.
@@ -144,19 +202,56 @@ unsafe fn build_and_serialise(
             detail: "FPDF_CreateNewDocument failed".into(),
         });
     }
+    let mut insert_docs = InsertDocs {
+        b,
+        loaded: Vec::new(),
+    };
     let result = (|| {
-        let indices: Vec<c_int> = order.iter().map(|s| c_int::from(*s)).collect();
-        if b.FPDF_ImportPagesByIndex(out, src, indices.as_ptr(), indices.len() as c_ulong, 0) == 0 {
-            return Err(PdfError::Internal {
-                detail: "importing pages in the new order failed".into(),
-            });
+        // Import runs of consecutive own pages in one call; inserted pages
+        // come from their own (cached) documents one at a time.
+        let mut position: c_int = 0;
+        let mut i = 0;
+        while i < order.len() {
+            if order[i] >= 0 {
+                let mut run: Vec<c_int> = Vec::new();
+                while i < order.len() && order[i] >= 0 {
+                    run.push(order[i]);
+                    i += 1;
+                }
+                if b.FPDF_ImportPagesByIndex(out, src, run.as_ptr(), run.len() as c_ulong, position)
+                    == 0
+                {
+                    return Err(PdfError::Internal {
+                        detail: "importing pages in the new order failed".into(),
+                    });
+                }
+                position += run.len() as c_int;
+            } else {
+                let k = (-order[i] - 1) as usize;
+                let source = inserts.get(k).ok_or_else(|| PdfError::Internal {
+                    detail: format!("order references missing insert {k}"),
+                })?;
+                let doc = insert_docs.get(&source.path)?;
+                let index = [c_int::from(source.page_index)];
+                if b.FPDF_ImportPagesByIndex(out, doc, index.as_ptr(), 1, position) == 0 {
+                    return Err(PdfError::Internal {
+                        detail: format!(
+                            "importing page {} of {} failed",
+                            source.page_index + 1,
+                            source.path.display()
+                        ),
+                    });
+                }
+                position += 1;
+                i += 1;
+            }
         }
 
-        // Additive /Rotate per final position.
+        // Additive /Rotate per final position (own pages only).
         for (final_idx, source) in order.iter().enumerate() {
             let extra = rotations
                 .iter()
-                .find(|(s, _)| s == source)
+                .find(|(s, _)| i32::from(*s) == *source)
                 .map_or(0, |(_, deg)| deg / 90);
             if extra % 4 == 0 {
                 continue;
@@ -178,7 +273,7 @@ unsafe fn build_and_serialise(
             .filter_map(|a| {
                 order
                     .iter()
-                    .position(|s| *s == a.page_index)
+                    .position(|s| *s == i32::from(a.page_index))
                     .map(|final_idx| {
                         let mut copy = a.clone();
                         copy.page_index = final_idx as u16;

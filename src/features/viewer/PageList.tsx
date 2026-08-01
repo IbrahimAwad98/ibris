@@ -28,6 +28,7 @@ export function PageList() {
   const fitMode = useViewerStore((s) => s.fitMode);
   const docOrder = useDocumentStore((s) => s.pageOrder);
   const docRotations = useDocumentStore((s) => s.rotations);
+  const inserts = useDocumentStore((s) => s.inserts);
   const setScale = useViewerStore((s) => s.setScale);
   const setCurrentPage = useViewerStore((s) => s.setCurrentPage);
 
@@ -37,20 +38,27 @@ export function PageList() {
   const lastScroll = useRef({ left: 0, top: 0 });
   const prevScale = useRef(scale);
 
-  // View slot → source page. Identity until the document store has
-  // structure; guarded against a stale order referencing missing pages.
+  // View slot → source page (negative = inserted placeholder). Identity
+  // until the document store has structure; guarded against a stale order
+  // referencing missing pages or inserts.
   const order = useMemo(
     () =>
-      (docOrder ?? pages.map((_, i) => i)).filter((src) => src < pages.length),
-    [docOrder, pages],
+      (docOrder ?? pages.map((_, i) => i)).filter((src) =>
+        src >= 0 ? src < pages.length : -src - 1 < inserts.length,
+      ),
+    [docOrder, pages, inserts],
   );
   const rotations = useMemo(
     () => order.map((src) => docRotations[src] ?? (0 as const)),
     [order, docRotations],
   );
+  const sizesPt = useMemo(
+    () => order.map((src) => (src >= 0 ? pages[src] : inserts[-src - 1])),
+    [order, pages, inserts],
+  );
   const dispSizes = useMemo(
-    () => order.map((src, i) => displaySize(pages[src], scale, rotations[i])),
-    [order, pages, scale, rotations],
+    () => sizesPt.map((pt, i) => displaySize(pt, scale, rotations[i])),
+    [sizesPt, scale, rotations],
   );
   const heights = useMemo(() => dispSizes.map((s) => s.height), [dispSizes]);
   const offsets = useMemo(() => pageOffsets(heights, PAGE_GAP), [heights]);
@@ -196,6 +204,21 @@ export function PageList() {
   for (let i = range.start; i <= range.end && i < order.length; i++) {
     const src = order[i];
     const left = Math.max(PAGE_GAP, (effectiveWidth - dispSizes[i].width) / 2);
+    if (src < 0) {
+      const ins = inserts[-src - 1];
+      views.push(
+        <InsertedPlaceholder
+          key={src}
+          top={offsets[i]}
+          left={left}
+          width={dispSizes[i].width}
+          height={dispSizes[i].height}
+          path={ins.path}
+          pageIndex={ins.pageIndex}
+        />,
+      );
+      continue;
+    }
     views.push(
       <PageView
         key={src}
@@ -232,6 +255,57 @@ export function PageList() {
       >
         {views}
       </div>
+    </div>
+  );
+}
+
+/** A page inserted from another file: real content arrives when save
+ * materialises the structure (decision 014 rebase); until then the slot
+ * shows where it will land. */
+function InsertedPlaceholder({
+  top,
+  left,
+  width,
+  height,
+  path,
+  pageIndex,
+}: {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  path: string;
+  pageIndex: number;
+}) {
+  const name = path.split(/[\\/]/).pop() ?? path;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top,
+        left,
+        width,
+        height,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        background: "var(--bg-panel)",
+        border: "2px dashed var(--border)",
+        borderRadius: 4,
+        color: "var(--text-dim)",
+        fontSize: 13,
+        textAlign: "center",
+        padding: 16,
+        boxSizing: "border-box",
+      }}
+    >
+      <span style={{ fontWeight: 600, wordBreak: "break-all" }}>{name}</span>
+      <span>page {pageIndex + 1}</span>
+      <span style={{ fontSize: 11, opacity: 0.8 }}>
+        inserted — renders after save
+      </span>
     </div>
   );
 }

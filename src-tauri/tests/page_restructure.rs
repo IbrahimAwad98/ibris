@@ -51,6 +51,7 @@ async fn reordering_moves_annotations_with_their_pages() {
             path.clone(),
             vec![1, 0],
             vec![],
+            vec![],
             vec![rect_annot("m3-a", 0)],
             vec!["m3-a".into()],
         )
@@ -77,7 +78,8 @@ async fn deleting_a_page_drops_it_and_its_annotations() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![1], // keep only source page 1
+            vec![1],
+            vec![], // keep only source page 1
             vec![],
             vec![rect_annot("m3-b", 0)], // annotation on the deleted page
             vec!["m3-b".into()],
@@ -104,6 +106,7 @@ async fn rotation_is_saved_into_the_file() {
             path.clone(),
             path.clone(),
             vec![0, 1],
+            vec![],
             vec![(0, 90)],
             vec![],
             vec![],
@@ -144,6 +147,7 @@ async fn extraction_to_another_file_leaves_the_source_alone() {
             vec![],
             vec![],
             vec![],
+            vec![],
         )
         .await
         .expect("extract failed");
@@ -174,4 +178,48 @@ async fn merge_concatenates_documents() {
 
     let (_id, info) = service.open(dest).await.expect("open merged failed");
     assert_eq!(info.page_count, 4);
+}
+
+#[tokio::test]
+async fn inserted_pages_from_another_file_materialise_at_save() {
+    let path = temp_copy("restructure-insert.pdf"); // 2 pages, 300x200
+    let service = PdfService::new();
+
+    // Insert plain-text.pdf (612x792) page 0 between our two pages:
+    // order [0, -1, 1] where -1 references inserts[0]. The annotation on
+    // own source page 1 must land on final page 2.
+    service
+        .save_document(
+            path.clone(),
+            path.clone(),
+            vec![0, -1, 1],
+            vec![ibris_lib::pdf::save::InsertSource {
+                path: fixture("plain-text.pdf"),
+                page_index: 0,
+            }],
+            vec![],
+            vec![rect_annot("m3-i", 1)],
+            vec!["m3-i".into()],
+        )
+        .await
+        .expect("insert save failed");
+
+    let (_id, info) = service.open(path.clone()).await.expect("reopen failed");
+    assert_eq!(info.page_count, 3, "inserted page missing");
+    let sizes: Vec<(f32, f32)> = info.pages.iter().map(|p| (p.width, p.height)).collect();
+    assert!(
+        (sizes[1].0 - 612.0).abs() < 0.5 && (sizes[1].1 - 792.0).abs() < 0.5,
+        "final page 1 is not the inserted letter page: {sizes:?}"
+    );
+    assert!(
+        (sizes[0].0 - 300.0).abs() < 0.5 && (sizes[2].0 - 300.0).abs() < 0.5,
+        "own pages moved: {sizes:?}"
+    );
+
+    let read = service.read_annotations(path).await.expect("read failed");
+    let a = read
+        .iter()
+        .find(|a| a.id == "ibris:m3-i")
+        .expect("annotation lost across insert");
+    assert_eq!(a.page_index, 2, "annotation did not follow its page");
 }
