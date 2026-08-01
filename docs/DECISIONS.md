@@ -306,3 +306,36 @@ can support.
 **Cost:** Undo stops at the last structural save. Deliberate and visible
 (the history panel empties), not a silent loss — an annotation-only save
 keeps history precisely because no rebase happens.
+
+---
+
+## 015 — Reopened annotations: /NM prefix + IbrisData, reconstruction as the floor
+
+**Decided:** Annotations are written with `/NM = "ibris:<uuid>"` (the
+ownership marker) and an `IbrisData` private key holding the full wire
+model as JSON. On open, a raw scan recovers every `ibris:`-tagged
+annotation — from `IbrisData` when readable, else **reconstructed from
+standard PDF keys** (QuadPoints, InkList, /Rect, /Contents, /CA, border,
+/M) — and the viewing document suppresses them in memory so they render
+through the editable SVG overlay instead of the page bitmap.
+
+**Alternatives:** Trusting `IbrisData` alone (a private key any other
+tool may strip on re-save — failure would be a silent regression to
+read-only that looks like a bug); recognising ours by "the /NM looks
+like a UUID" (Acrobat also writes GUID-shaped /NM values —
+false-positives would let the app rewrite foreign annotations);
+a sidecar database next to the app data (dies with the machine, and the
+file must stand alone).
+
+**Why:** Reconstruction from standard keys is the load-bearing
+mechanism, because it survives every editor that preserves annotations
+at all; `IbrisData` is a fidelity upgrade on top (exact colours, arrow
+heads, stamp kinds). The degradation ladder is: verbatim → reconstructed
+(an arrow whose IbrisData was stripped comes back as a line) → still
+visible but read-only (anything unmodellable stays in the viewing
+document). No rung loses content.
+
+**Cost:** Each annotation carries a few hundred bytes of JSON. The open
+path does one extra raw parse of the file. A tool that rewrites /NM
+entirely turns our annotations foreign — visible, uneditable; nothing
+better is possible once identity is gone.

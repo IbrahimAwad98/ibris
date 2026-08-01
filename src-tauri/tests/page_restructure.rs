@@ -62,7 +62,7 @@ async fn reordering_moves_annotations_with_their_pages() {
     let read = service.read_annotations(path).await.expect("read failed");
     let a = read
         .iter()
-        .find(|a| a.id == "m3-a")
+        .find(|a| a.id == "ibris:m3-a") // /NM ownership prefix, M2-PLAN §8
         .expect("annotation lost");
     // Source page 0 now sits at final position 1 — the annotation moved.
     assert_eq!(a.page_index, 1, "annotation did not move with its page");

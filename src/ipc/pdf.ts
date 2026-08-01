@@ -1,6 +1,7 @@
 // The only module allowed to call invoke(). Components and stores go
 // through these typed wrappers exclusively.
 import { invoke } from "@tauri-apps/api/core";
+import type { Annotation } from "../lib/annotations";
 
 export interface PageSizePt {
   width: number;
@@ -11,6 +12,9 @@ export interface OpenedDocument {
   docId: number;
   pageCount: number;
   pages: PageSizePt[];
+  /** Our own saved annotations, recovered from the file and suppressed in
+   * the viewing document so they render via the SVG overlay instead. */
+  annotations: Annotation[];
 }
 
 export type PdfError =
