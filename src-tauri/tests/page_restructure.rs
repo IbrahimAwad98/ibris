@@ -54,6 +54,8 @@ async fn reordering_moves_annotations_with_their_pages() {
             vec![],
             vec![rect_annot("m3-a", 0)],
             vec!["m3-a".into()],
+            vec![],
+            false,
         )
         .await
         .expect("save failed");
@@ -83,6 +85,8 @@ async fn deleting_a_page_drops_it_and_its_annotations() {
             vec![],
             vec![rect_annot("m3-b", 0)], // annotation on the deleted page
             vec!["m3-b".into()],
+            vec![],
+            false,
         )
         .await
         .expect("save failed");
@@ -110,6 +114,8 @@ async fn rotation_is_saved_into_the_file() {
             vec![(0, 90)],
             vec![],
             vec![],
+            vec![],
+            false,
         )
         .await
         .expect("save failed");
@@ -148,6 +154,8 @@ async fn extraction_to_another_file_leaves_the_source_alone() {
             vec![],
             vec![],
             vec![],
+            vec![],
+            false,
         )
         .await
         .expect("extract failed");
@@ -200,6 +208,8 @@ async fn inserted_pages_from_another_file_materialise_at_save() {
             vec![],
             vec![rect_annot("m3-i", 1)],
             vec!["m3-i".into()],
+            vec![],
+            false,
         )
         .await
         .expect("insert save failed");
