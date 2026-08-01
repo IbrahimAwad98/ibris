@@ -180,7 +180,7 @@ fn pdf_date(epoch_ms: i64) -> String {
 
 /// Origin of the page's visible box (crop, falling back to media) via raw
 /// FFI, mirroring `text::visible_box_origin` for safe pages.
-fn raw_visible_box_origin(b: &dyn PdfiumLibraryBindings, page: FPDF_PAGE) -> (f32, f32) {
+pub(crate) fn raw_visible_box_origin(b: &dyn PdfiumLibraryBindings, page: FPDF_PAGE) -> (f32, f32) {
     let (mut l, mut bo, mut r, mut t) = (0f32, 0f32, 0f32, 0f32);
     unsafe {
         if b.FPDFPage_GetCropBox(page, &mut l, &mut bo, &mut r, &mut t) != 0
@@ -193,9 +193,9 @@ fn raw_visible_box_origin(b: &dyn PdfiumLibraryBindings, page: FPDF_PAGE) -> (f3
     }
 }
 
-struct PageSpace {
-    box_left: f32,
-    box_top: f32,
+pub(crate) struct PageSpace {
+    pub(crate) box_left: f32,
+    pub(crate) box_top: f32,
 }
 
 impl PageSpace {
@@ -203,7 +203,7 @@ impl PageSpace {
         (self.box_left + p.x, self.box_top - p.y)
     }
     /// Top-left rect → PDF-space FS_RECTF (left, top, right, bottom).
-    fn rect(&self, r: AnnotRect) -> FS_RECTF {
+    pub(crate) fn rect(&self, r: AnnotRect) -> FS_RECTF {
         FS_RECTF {
             left: self.box_left + r.x,
             top: self.box_top - r.y,

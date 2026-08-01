@@ -337,3 +337,70 @@ at the bottom. Branch per milestone; nothing pushed.
   (cargo 14 suites, npm 120, clippy/fmt/deny/lint/typecheck, pipefail).
   Manual checklist: transparency edge rendering in Acrobat/Edge,
   overlay field typing, signature drag placement by hand.
+
+- **2026-08-02 01:10** - M5 redaction ENGINE landed (UI deliberately not
+  yet - engine-first so the safety-critical part is test-proven before
+  anything looks clickable; no UI exists, so nothing misleads). Design
+  per DECISIONS 018: refusal-first (metadata/outline/other-annotation/
+  form-value leaks and any embedded attachments fail the save with the
+  channel named - PDFium cannot rewrite those), whole-object removal of
+  intersecting text+images (over-redaction by design; nested Form
+  XObject content is refused, not silently erased), black marker box,
+  GenerateContent, and an ALWAYS-ON engine verification that re-parses
+  the final bytes and proves the regions extract no text and contain no
+  images before the atomic rename. Save wire refactored to a
+  SaveRequest struct (was 10 positional args) - all call sites and
+  tests migrated. Tests: extraction-absence proof (the mandated one),
+  full-page image redaction, refusal on a leaky annotation with the
+  file left byte-identical. OCR deferred with reasoning in 018
+  (Tesseract native build/packaging on Windows is its own project).
+  Gate green both sides: cargo 15 suites / 47 tests, npm 120,
+  clippy/fmt/deny/lint/typecheck, pipefail.
+
+- **2026-08-02 01:15** - **SESSION STOP POINT.** Final state: branch
+  feat/m5-redaction, everything pushed, full gate green. main carries
+  M0-M4 (PRs #1-#4, merge commits); feat/m4-signatures (M4 complete
+  incl. signature placement) and feat/m5-redaction are open branches
+  stacked on main in that order (m5 contains m4-signatures? NO - m5
+  branched from m4-signatures, so yes: m5 contains it; merge
+  m4-signatures first or just merge m5 which includes both).
+
+  DONE this session: DECISIONS 012-018; M2 read-only gap closed
+  (reopen editability with reconstruction fallback); M3 completed
+  (underline fix, reorder test, extract/split/merge, insert-from-file
+  with placeholders); M4 completed (forms read/fill/flatten/XFA banner,
+  signature placement); merges to main with app-runs proof; M6-PLAN.md;
+  M5 redaction engine with in-pipeline verification.
+
+  NEXT SESSION, in order:
+  1. M5 redaction UI + model: redaction tool (drag rect like the rect
+     tool), EditCore `redactions` list + add/remove commands, sidecar
+     field (parse default []), saveToPath passes them (wire param
+     already exists end to end), structural=true when redactions
+     present so the viewer rebase-reloads. Surface refusal errors
+     (PdfError::Unsupported.feature) verbatim in the save-error UI -
+     the messages are written for users.
+  2. M5 OCR slice: evaluate tesseract crate vs bundling libtesseract;
+     searchable text layer design; DECISIONS entry when the packaging
+     story is clear.
+  3. M6a per M6-PLAN.md (edit-text command, glyph gate, verification
+     extraction before rename).
+  4. Consider merging feat/m5-redaction -> main when its UI exists.
+
+  FIRST COMMANDS on resume: git status && npm test -- --run, then
+  cd src-tauri && cargo test. Read M6-PLAN.md and DECISIONS 018 before
+  touching M5 UI or M6.
+
+  MANUAL CHECKLIST (accumulated, needs human hands):
+  - Type into form overlay fields; tab order; combo/list selects.
+  - Place a signature image via the palette; drag it; save; reopen.
+  - Insert-from-file placeholders: drag-reorder them, save, verify the
+    rebase shows real pages.
+  - Extract/split/merge palette commands end to end with real paths.
+  - Third-party reader checks (Acrobat/Edge): our annotations render,
+    signature image transparency edges, filled form values visible,
+    flattened output.
+  - Underline-on-launch: confirmed fixed in the post-merge screenshot
+    (tool reads Select), but confirm the stale localStorage profile
+    also self-heals on a dev profile that had the bad key.
+  - Ctrl+Tab under WebView2; light-theme + palette screenshots.
