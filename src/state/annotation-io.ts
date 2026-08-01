@@ -116,6 +116,34 @@ export async function saveDocument(path: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Writes the pages in the given *view slots* — with their rotations and
+ * annotations as currently shown, saved or not — to a new file. Backs the
+ * extract-page and split commands; never touches the open document.
+ */
+export async function saveSubset(
+  openPath: string,
+  target: string,
+  slots: number[],
+): Promise<void> {
+  const s = useDocumentStore.getState();
+  const sourceCount = useViewerStore.getState().pages.length;
+  const order = s.pageOrder ?? Array.from({ length: sourceCount }, (_, i) => i);
+  const subset = slots
+    .map((slot) => order[slot])
+    .filter((src): src is number => src !== undefined);
+  const rotations = Object.entries(s.rotations)
+    .map(([src, deg]) => [Number(src), deg] as [number, number])
+    .filter(([src, deg]) => deg % 360 !== 0 && subset.includes(src));
+  const annotations = Object.values(s.annotations);
+  const ourIds = [
+    ...new Set([...s.savedIds, ...annotations.map((a) => a.id)]),
+  ];
+  // The engine drops annotations whose page is not in the order and
+  // remaps the rest, so the whole set can be passed as-is.
+  await ipcSaveDocument(openPath, target, subset, rotations, annotations, ourIds);
+}
+
 /** Saves the current structure + annotations onto `target` (Save As when
  * target differs from the open document's path). */
 export async function saveToPath(openPath: string, target: string): Promise<void> {

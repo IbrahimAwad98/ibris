@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moveSlots, removeSlots } from "./page-ops";
+import { moveSlots, removeSlots, siblingPartPath } from "./page-ops";
 
 describe("moveSlots", () => {
   it("moves a single slot forward and back", () => {
@@ -30,5 +30,19 @@ describe("removeSlots", () => {
 
   it("never removes every page", () => {
     expect(removeSlots([5, 6], [0, 1])).toEqual([5, 6]);
+  });
+});
+
+describe("siblingPartPath", () => {
+  it("turns part 1 into part 2", () => {
+    expect(siblingPartPath("C:\docs\report - part 1.pdf")).toBe(
+      "C:\docs\report - part 2.pdf",
+    );
+  });
+
+  it("appends part 2 when the user renamed away the pattern", () => {
+    expect(siblingPartPath("C:\docs\first-half.pdf")).toBe(
+      "C:\docs\first-half - part 2.pdf",
+    );
   });
 });
