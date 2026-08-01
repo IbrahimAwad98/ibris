@@ -99,6 +99,16 @@ export function pageRotation(state: ViewerState, viewIndex: number): Rotation {
   return useDocumentStore.getState().rotations[src] ?? 0;
 }
 
+/** Size in points of the page shown in a slot — the engine page for own
+ * sources, the registered insert for negative refs (M3 placeholders). */
+export function sourceSizePt(
+  state: ViewerState,
+  src: number,
+): { width: number; height: number } | undefined {
+  if (src >= 0) return state.pages[src];
+  return useDocumentStore.getState().inserts[-src - 1];
+}
+
 export const useViewerStore = create<ViewerState>((set, get) => ({
   docId: null,
   pages: [],
@@ -130,6 +140,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     const before: Record<number, Rotation> = {};
     const after: Record<number, Rotation> = {};
     for (const src of order) {
+      if (src < 0) continue; // placeholder pages rotate after save
       before[src] = rotations[src] ?? 0;
       after[src] = ((before[src] + 90) % 360) as Rotation;
     }
@@ -140,7 +151,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
   rotatePage: (viewIndex) => {
     const src = pageOrderOf(get())[viewIndex];
-    if (src === undefined) return;
+    if (src === undefined || src < 0) return; // placeholders rotate after save
     const current = useDocumentStore.getState().rotations[src] ?? 0;
     useDocumentStore.getState().execute(
       rotatePages(

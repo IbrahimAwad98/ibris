@@ -139,6 +139,7 @@ async fn save_one_of_each(service: &PdfService, path: &PathBuf) -> Vec<Annotatio
             path.clone(),
             vec![0],
             vec![],
+            vec![],
             annots.clone(),
             ids,
         )

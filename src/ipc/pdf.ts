@@ -186,14 +186,22 @@ export async function setActiveDocument(docId: number | null): Promise<void> {
   await invoke("set_active_document", { docId });
 }
 
+/** A page pulled from another file, referenced by negative `order`
+ * entries: order value -(k+1) means inserts[k]. */
+export interface InsertSource {
+  path: string;
+  pageIndex: number;
+}
+
 /**
  * Applies page structure and annotations to the file at `srcPath`, writing
  * the result to `destPath` (same path = in-place save; a subset order and
  * a different path = extraction). `order` is the final page sequence as
- * source indexes; `rotations` are extra clockwise degrees per source page.
- * `ourIds` are every /NM id the app has written for this document — they
- * are deleted before writing, making saves idempotent. The wire shape of
- * an annotation matches `Annotation` in lib/annotations.
+ * source indexes — negative entries reference `inserts` (pages imported
+ * from other files); `rotations` are extra clockwise degrees per source
+ * page. `ourIds` are every /NM id the app has written for this document —
+ * they are deleted before writing, making saves idempotent. The wire
+ * shape of an annotation matches `Annotation` in lib/annotations.
  */
 export async function saveDocument(
   srcPath: string,
@@ -202,6 +210,7 @@ export async function saveDocument(
   rotations: [number, number][],
   annotations: unknown[],
   ourIds: string[],
+  inserts: InsertSource[] = [],
 ): Promise<void> {
   await invoke("save_document", {
     srcPath,
@@ -210,6 +219,7 @@ export async function saveDocument(
     rotations,
     annotations,
     ourIds,
+    inserts,
   });
 }
 

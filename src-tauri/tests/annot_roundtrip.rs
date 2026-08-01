@@ -154,6 +154,7 @@ async fn every_annotation_type_round_trips() {
             path.clone(),
             vec![0],
             vec![],
+            vec![],
             annots.clone(),
             ids.clone(),
         )
@@ -232,7 +233,15 @@ async fn every_annotation_type_round_trips() {
 
     // Saving again over the annotated file must not duplicate anything.
     service
-        .save_document(path.clone(), path.clone(), vec![0], vec![], annots, ids)
+        .save_document(
+            path.clone(),
+            path.clone(),
+            vec![0],
+            vec![],
+            vec![],
+            annots,
+            ids,
+        )
         .await
         .expect("second save failed");
     let read2 = service
@@ -264,6 +273,7 @@ async fn appearance_streams_actually_draw() {
             path.clone(),
             path.clone(),
             vec![0],
+            vec![],
             vec![],
             annots,
             vec!["id-rect-render".into()],

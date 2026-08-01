@@ -9,6 +9,7 @@ import { useViewerStore } from "../../state/viewer-store";
 export function ThumbnailPanel() {
   const pages = useViewerStore((s) => s.pages);
   const docOrder = useDocumentStore((s) => s.pageOrder);
+  const inserts = useDocumentStore((s) => s.inserts);
   const currentPage = useViewerStore((s) => s.currentPage);
   const scrollToPage = useViewerStore((s) => s.scrollToPage);
   const execute = useDocumentStore((s) => s.execute);
@@ -17,8 +18,8 @@ export function ThumbnailPanel() {
   const [dropAt, setDropAt] = useState<number | null>(null);
   const lastClick = useRef(0);
 
-  const order = (docOrder ?? pages.map((_, i) => i)).filter(
-    (src) => src < pages.length,
+  const order = (docOrder ?? pages.map((_, i) => i)).filter((src) =>
+    src >= 0 ? src < pages.length : -src - 1 < inserts.length,
   );
 
   // Structure changes (reorder/delete/undo) invalidate slot selections.
@@ -94,6 +95,11 @@ export function ThumbnailPanel() {
         <Thumbnail
           key={src}
           pageIndex={src}
+          insertedFrom={
+            src < 0
+              ? (inserts[-src - 1]?.path.split(/[\\/]/).pop() ?? "file")
+              : undefined
+          }
           label={i + 1}
           active={i === currentPage}
           selected={selected.includes(i)}
@@ -118,6 +124,7 @@ export function ThumbnailPanel() {
 
 function Thumbnail({
   pageIndex,
+  insertedFrom,
   label,
   active,
   selected,
@@ -128,8 +135,10 @@ function Thumbnail({
   onDrop,
   onDragEnd,
 }: {
-  /** Source page (previews are keyed by it). */
+  /** Source page (previews are keyed by it); negative for inserts. */
   pageIndex: number;
+  /** Set for placeholder pages inserted from another file. */
+  insertedFrom?: string;
   /** 1-based position in the current view order. */
   label: number;
   active: boolean;
@@ -189,7 +198,15 @@ function Thumbnail({
           background: dark ? "#000" : "#fff",
         }}
       />
-      <div style={{ fontSize: 11, opacity: 0.7 }}>{label}</div>
+      <div style={{ fontSize: 11, opacity: 0.7 }}>
+        {label}
+        {insertedFrom !== undefined && (
+          <span title={`inserted from ${insertedFrom}; renders after save`}>
+            {" "}
+            + {insertedFrom}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
