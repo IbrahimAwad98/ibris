@@ -288,3 +288,19 @@ at the bottom. Branch per milestone; nothing pushed.
   FileAttachment); mouse-click toggling did nothing for checkboxes,
   space-key toggling is what PDFium honours. Three tests: structure,
   fill+render, flatten (fields gone + text still drawn + annots gone).
+
+- **2026-08-01 23:25** — M4 forms frontend landed: `set-field` and
+  `flatten-forms` commands (undoable; undo of a first edit returns the
+  field to its file value by deleting the override), FormLayer renders
+  opaque paper-coloured HTML controls over widget rects (text/textarea,
+  checkbox, radio by kid index, combo select, list select; disabled
+  when read-only or flatten pending; tab order = widget order per
+  page), XFA banner instead of pretending, palette command to toggle
+  flatten-at-save. Saves with field edits or flatten take the rebase
+  path so the reloaded bitmap matches the file. Sidecar gains
+  fieldValues/flattenForms with parse defaults (old sidecars fine —
+  tested). DECISIONS 016 records the event-pipeline choice, the
+  /AcroForm-lost-on-import degradation, /Tabs, and multi-select
+  ceilings. Gate green: cargo 13 suites, npm 120, both full.
+  UNTESTED by hand (no synthetic input): actual typing into overlay
+  fields in the running app — on the manual checklist.

@@ -47,6 +47,7 @@ beforeEach(() => {
     pageCount: 3,
     pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
     annotations: [],
+    form: { formType: "none", fields: [] },
   }));
   useTabsStore.setState({
     tabs: [],
@@ -234,6 +235,7 @@ describe("session restore", () => {
         pageCount: 3,
         pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
         annotations: [],
+        form: { formType: "none", fields: [] },
       };
     });
     useTabsStore.setState({
