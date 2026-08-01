@@ -226,3 +226,83 @@ special-case invalidation anywhere.
 pixel) and re-renders everything on theme switch. Images nested inside Form
 XObjects are not detected and will be inverted — recurse into form objects
 if such a document shows up.
+
+---
+
+## 012 — Documents open from bytes, not by file path
+
+**Decided:** `open` reads the whole PDF into memory and loads it with
+`load_pdf_from_byte_vec`; PDFium never holds an OS handle on the file.
+
+**Alternatives:** `load_pdf_from_file` (PDFium's own file loader);
+opening with `FILE_SHARE_DELETE` semantics (not reachable through PDFium's
+loader on Windows).
+
+**Why:** PDFium's file loader keeps the file handle open for the lifetime
+of the document. On Windows that blocks the save pipeline's atomic
+temp-file rename over the file *while it is being viewed* — which is every
+save. Loading from bytes releases the file at open, so save/rename always
+works and external tools can touch the file (which the fingerprint check
+then detects).
+
+**Cost:** Whole-file memory residency per open tab — tens of MB for
+typical documents, hundreds for scan-heavy ones. Accepted for a desktop
+viewer; if it ever matters, the fallback is a custom `FPDF_FILEACCESS`
+reader over a `FILE_SHARE_DELETE` handle, not PDFium's loader.
+
+---
+
+## 013 — Save is a raw-FFI rewrite of a fresh load, keyed by /NM
+
+**Decided:** Save runs entirely on the engine thread against a *fresh*
+`FPDF_LoadMemDocument64` of the on-disk bytes. It deletes every annotation
+whose `/NM` is one of ours, rewrites all current annotations (explicit /AP
+appearance streams, raw `FPDFAnnot_*` FFI), runs `FPDF_SaveAsCopy` with
+`FPDF_NO_INCREMENTAL` into a temp file, and renames over the target. The
+viewing document is never touched or reloaded on a non-structural save.
+
+**Alternatives:** Mutating the viewing document and saving it (loses the
+clean separation between base file and command stack; annotations would
+double-render — once from the bitmap, once from the overlay — or force a
+reload that destroys undo history). Incremental append (PDFium's public
+save surface regenerates regardless; the flag exists but a true
+incremental append is not honoured). pdfium-render's safe annotation API
+(cannot create line/circle, and exposes no /NM, /CA, or /AP setters).
+
+**Why:** Delete-by-/NM-then-write makes saves idempotent — saving twice
+does not duplicate annotations. Working on a fresh load means undo
+survives saves and the overlay never double-renders. Temp + same-volume
+rename means a failure anywhere leaves the destination untouched.
+
+**Cost:** Full rewrite invalidates existing digital signatures on every
+save (flagged for a later milestone: warn on signed documents). Raw FFI
+means manual lifetime discipline (`unsafe` blocks confined to
+`pdf/annot.rs` and `pdf/save.rs`, engine thread only per decision 008).
+
+---
+
+## 014 — Structural saves rebase the document and reset undo history
+
+**Decided:** After a save that changes page structure (reorder, delete,
+rotate), the open document is *rebased*: the viewer reloads the new file,
+annotations are remapped source→final page indexes, page order becomes
+identity, rotations reset to zero, and the undo history is cleared.
+Non-structural (annotation-only) saves keep the full undo history.
+
+**Alternatives:** Keeping the undo stack across structural saves by
+rewriting every stacked command's page indexes through the inverse
+permutation; keeping the old engine document alive as the undo base.
+
+**Why:** After the disk file is materialised in the new order, "undo the
+reorder" has no meaningful base — the original file no longer exists, so
+undoing would have to *re-reorder* the new file, and every older command
+on the stack would need its page references rewritten against a document
+whose indexes have changed meaning. That is a permutation-rewriting engine
+bolted onto the command stack, purchasable only with new invariants that
+each later feature must maintain. A save is already an explicit "commit"
+gesture; resetting history at that point matches what the file on disk
+can support.
+
+**Cost:** Undo stops at the last structural save. Deliberate and visible
+(the history panel empties), not a silent loss — an annotation-only save
+keeps history precisely because no rebase happens.
