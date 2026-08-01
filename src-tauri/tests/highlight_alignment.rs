@@ -40,7 +40,7 @@ async fn assert_rect_within_ink(fixture_name: &str, query: &str) {
 
     for (req_base, scale) in [(100u64, 1.0f32), (200, 2.42), (300, 5.0)] {
         let page = service
-            .render(doc_id, 0, scale, req_base)
+            .render(doc_id, 0, scale, false, req_base)
             .await
             .expect("render failed");
         let (ink_l, ink_t, ink_r, ink_b) =
