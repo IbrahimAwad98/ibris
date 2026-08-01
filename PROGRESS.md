@@ -220,3 +220,17 @@ at the bottom. Branch per milestone; nothing pushed.
   recovered, still renders. Store test: reopened annotation delete +
   undo intact, savedIds preserved. DECISIONS.md 015. Gate green: cargo
   test 40, npm test 111, clippy/fmt/deny/lint/typecheck.
+
+- **2026-08-01 21:55** — Underline-on-launch root-caused WITHOUT running
+  the app: tool-store's rehydration `merge` spread the whole persisted
+  blob over live state, so any stale `tool`/`selectedId` key ever
+  written to the ibris-tools localStorage entry (e.g. by an
+  intermediate uncommitted dev build — partialize has excluded `tool`
+  in every committed version) leaks back on every launch. Fix:
+  `mergePersistedToolState` accepts only the partialized keys; unit
+  tests cover the stale-blob case. Honest caveat: the dev profile's
+  actual localStorage was not inspected (needs the running app), so
+  "the symptom is gone" stays on the manual checklist — but the only
+  code path that could produce it is now closed. Also added the M3
+  store test: reorder + undo/redo restores order with annotations
+  keyed to source pages throughout.
