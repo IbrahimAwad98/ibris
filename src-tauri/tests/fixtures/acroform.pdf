@@ -1,0 +1,114 @@
+%PDF-1.7
+%«Ïè¢
+1 0 obj
+<< /Type /Catalog /Pages 3 0 R /AcroForm 2 0 R >>
+endobj
+2 0 obj
+<< /Fields [7 0 R 9 0 R 14 0 R 15 0 R 17 0 R] /DR << /Font << /Helv 4 0 R >> >> /DA (/Helv 12 Tf 0 g) >>
+endobj
+3 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 3 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources << /Font << /Helv 4 0 R >> >> /Annots [7 0 R 9 0 R 12 0 R 13 0 R 15 0 R 17 0 R] >>
+endobj
+6 0 obj
+<< /Length 45  >>
+stream
+BT /Helv 14 Tf 72 750 Td (Form fixture) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /Rect [72 700 372 724] /F 4 /DA (/Helv 12 Tf 0 g) /MK << /BC [0 0 0] /BG [1 1 1] >> /AP << /N 8 0 R >> >>
+endobj
+8 0 obj
+<< /Length 40 /Type /XObject /Subtype /Form /BBox [0 0 300 24] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 299.5 23.5 re S
+endstream
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Btn /T (subscribe) /Rect [72 660 88 676] /F 4 /V /Off /AS /Off /MK << /BC [0 0 0] /BG [1 1 1] >> /AP << /N << /Yes 10 0 R /Off 11 0 R >> >> >>
+endobj
+10 0 obj
+<< /Length 67 /Type /XObject /Subtype /Form /BBox [0 0 16 16] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 15.5 15.5 re S 1.5 w 3 8 m 7 4 l 13 12 l S
+endstream
+endobj
+11 0 obj
+<< /Length 39 /Type /XObject /Subtype /Form /BBox [0 0 16 16] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 15.5 15.5 re S
+endstream
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Widget /Parent 14 0 R /Rect [72 620 88 636] /F 4 /AS /Off /MK << /BC [0 0 0] /BG [1 1 1] /CA (l) >> /AP << /N << /Red 18 0 R /Off 19 0 R >> >> >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /Widget /Parent 14 0 R /Rect [110 620 126 636] /F 4 /AS /Off /MK << /BC [0 0 0] /BG [1 1 1] /CA (l) >> /AP << /N << /Blue 18 0 R /Off 19 0 R >> >> >>
+endobj
+14 0 obj
+<< /FT /Btn /T (color) /Ff 32768 /V /Off /Kids [12 0 R 13 0 R] >>
+endobj
+15 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Ch /T (country) /Ff 131072 /Rect [72 560 200 584] /F 4 /Opt [(US) (DE) (EG)] /V (US) /DA (/Helv 12 Tf 0 g) /MK << /BC [0 0 0] /BG [1 1 1] >> /AP << /N 16 0 R >> >>
+endobj
+16 0 obj
+<< /Length 73 /Type /XObject /Subtype /Form /BBox [0 0 128 24] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 127.5 23.5 re S BT /Helv 12 Tf 2 7 Td (US) Tj ET
+endstream
+endobj
+17 0 obj
+<< /Type /Annot /Subtype /Widget /FT /Ch /T (picks) /Rect [72 480 200 540] /F 4 /Opt [(Alpha) (Beta) (Gamma)] /DA (/Helv 12 Tf 0 g) /MK << /BC [0 0 0] /BG [1 1 1] >> /AP << /N 20 0 R >> >>
+endobj
+18 0 obj
+<< /Length 61 /Type /XObject /Subtype /Form /BBox [0 0 16 16] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 15.5 15.5 re S 0 0 0 rg 5 5 6 6 re f
+endstream
+endobj
+19 0 obj
+<< /Length 39 /Type /XObject /Subtype /Form /BBox [0 0 16 16] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 15.5 15.5 re S
+endstream
+endobj
+20 0 obj
+<< /Length 40 /Type /XObject /Subtype /Form /BBox [0 0 128 60] >>
+stream
+0.5 w 0 0 0 RG 0.25 0.25 127.5 59.5 re S
+endstream
+endobj
+xref
+0 21
+0000000000 65535 f 
+0000000015 00000 n 
+0000000080 00000 n 
+0000000200 00000 n 
+0000000257 00000 n 
+0000000354 00000 n 
+0000000532 00000 n 
+0000000628 00000 n 
+0000000800 00000 n 
+0000000939 00000 n 
+0000001135 00000 n 
+0000001301 00000 n 
+0000001439 00000 n 
+0000001627 00000 n 
+0000001818 00000 n 
+0000001900 00000 n 
+0000002118 00000 n 
+0000002291 00000 n 
+0000002496 00000 n 
+0000002656 00000 n 
+0000002794 00000 n 
+trailer
+<< /Size 21 /Root 1 0 R >>
+startxref
+2934
+%%EOF

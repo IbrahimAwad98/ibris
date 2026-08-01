@@ -268,3 +268,23 @@ at the bottom. Branch per milestone; nothing pushed.
   (insert/undo/redo keeps order + registry consistent). Gate green
   both sides with pipefail: cargo test 41 across 12 suites, clippy,
   fmt, deny; npm test 117, lint, typecheck.
+
+- **2026-08-01 22:34** — **M3 COMPLETE** (engine + model + commands;
+  interactive verification of drag/placeholder UI stays on the manual
+  checklist). Disk at the boundary: cargo-target 8.9 GB, D: 52 GB free
+  — fine. Branch feat/m4-forms started.
+
+- **2026-08-01 23:05** — M4 engine half landed: acroform.pdf fixture
+  (hand-written generator: text, checkbox, 2-kid radio group, combo,
+  list, all with explicit APs), pdf/form.rs — read side via the safe
+  API (FormInfo in DocumentInfo: kinds, values, options, kid indexes,
+  read-only flags), fill side via a raw form-fill environment. Fills
+  go through PDFium's event pipeline (focus → select-all → replace →
+  kill-focus; checkboxes/radios via focus + space), because a /V-only
+  write leaves the old appearance stream — the test renders and counts
+  glyph pixels to prove the AP regenerated, not just that /V changed.
+  Flatten: FPDFPage_Flatten per page after annotation write. Surprise
+  worth recording: FPDF_ANNOT_WIDGET is 20, not 17 (17 is
+  FileAttachment); mouse-click toggling did nothing for checkboxes,
+  space-key toggling is what PDFium honours. Three tests: structure,
+  fill+render, flatten (fields gone + text still drawn + annots gone).
