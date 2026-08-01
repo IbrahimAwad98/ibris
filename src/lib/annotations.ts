@@ -35,6 +35,7 @@ export type Annotation = AnnotationBase &
     | { kind: "rect" | "ellipse"; rect: Rect; strokeWidth: number; fill?: string }
     | { kind: "line" | "arrow"; from: Point; to: Point; strokeWidth: number }
     | { kind: "stamp"; rect: Rect; stamp: StampName }
+    | { kind: "image"; rect: Rect; dataUrl: string }
   );
 
 /** The annotation shifted by (dx, dy) points; used by drag-to-move. */
@@ -57,6 +58,7 @@ export function translateAnnotation(a: Annotation, dx: number, dy: number): Anno
     case "arrow":
       return { ...a, from: pt(a.from), to: pt(a.to) };
     case "stamp":
+    case "image":
       return { ...a, rect: rc(a.rect) };
   }
 }
@@ -70,6 +72,8 @@ export function annotationNoun(a: Annotation): string {
       return "ink stroke";
     case "rect":
       return "rectangle";
+    case "image":
+      return "signature image";
     default:
       return a.kind;
   }

@@ -98,6 +98,13 @@ pub enum AnnotGeom {
         rect: AnnotRect,
         stamp: String,
     },
+    /// A placed signature image (M4). Graphical placement only — this is
+    /// NOT cryptographic signing and implies no legal validity.
+    Image {
+        rect: AnnotRect,
+        #[serde(rename = "dataUrl")]
+        data_url: String,
+    },
 }
 
 /// Every annotation we write carries `/NM = "ibris:<uuid>"`. The prefix is
@@ -139,9 +146,15 @@ fn subtype_of(geom: &AnnotGeom) -> i32 {
         // arrows are written as /Ink strokes instead (drawn by our /AP, so
         // they render identically — readers just classify them as pencil).
         AnnotGeom::Line { .. } | AnnotGeom::Arrow { .. } => SUBTYPE_INK,
-        AnnotGeom::Stamp { .. } => SUBTYPE_STAMP,
+        AnnotGeom::Stamp { .. } | AnnotGeom::Image { .. } => SUBTYPE_STAMP,
     }
 }
+
+/// /Name marker distinguishing an image stamp from our glyph stamps. An
+/// image stamp whose IbrisData was stripped cannot be reconstructed from
+/// standard keys (the pixels live in the /AP), so recovery leaves it in
+/// the viewing document — visible, read-only.
+const IMAGE_STAMP_NAME: &str = "ibris-image";
 
 /// Parses "#rrggbb" into channels; fails on anything else.
 pub fn parse_color(color: &str) -> Result<(u8, u8, u8), PdfError> {
@@ -283,7 +296,7 @@ fn pdf_rect(space: &PageSpace, a: &AnnotationData) -> FS_RECTF {
                 stroke_width.max(1.0) + 8.0, // room for the arrow head
             )
         }
-        AnnotGeom::Stamp { rect, .. } => space.rect(*rect),
+        AnnotGeom::Stamp { rect, .. } | AnnotGeom::Image { rect, .. } => space.rect(*rect),
     }
 }
 
@@ -487,6 +500,10 @@ fn appearance_stream(space: &PageSpace, a: &AnnotationData) -> Result<String, Pd
                 fmt(hy2)
             ));
         }
+        AnnotGeom::Image { .. } => {
+            // Image stamps get their appearance from an appended image
+            // object (fill_annot), not a drawn content stream.
+        }
         AnnotGeom::Stamp { rect, stamp } => {
             let rc = space.rect(*rect);
             let (w, h) = (rc.right - rc.left, rc.top - rc.bottom);
@@ -627,7 +644,7 @@ pub unsafe fn write_annotations(
                     detail: format!("failed to load page {page_index} for annotation"),
                 });
             }
-            let result = write_page(b, page, wanted.map_or(&[][..], |v| &v[..]), our_ids);
+            let result = write_page(b, doc, page, wanted.map_or(&[][..], |v| &v[..]), our_ids);
             b.FPDF_ClosePage(page);
             result?;
         }
@@ -637,6 +654,7 @@ pub unsafe fn write_annotations(
 
 unsafe fn write_page(
     b: &dyn PdfiumLibraryBindings,
+    doc: FPDF_DOCUMENT,
     page: FPDF_PAGE,
     annots: &[&AnnotationData],
     our_ids: &[String],
@@ -652,7 +670,7 @@ unsafe fn write_page(
                 detail: format!("PDFium refused to create annotation {}", a.id),
             });
         }
-        let result = fill_annot(b, annot, &space, a);
+        let result = fill_annot(b, doc, annot, &space, a);
         b.FPDFPage_CloseAnnot(annot);
         result?;
     }
@@ -661,6 +679,7 @@ unsafe fn write_page(
 
 unsafe fn fill_annot(
     b: &dyn PdfiumLibraryBindings,
+    doc: FPDF_DOCUMENT,
     annot: FPDF_ANNOTATION,
     space: &PageSpace,
     a: &AnnotationData,
@@ -762,6 +781,9 @@ unsafe fn fill_annot(
         AnnotGeom::Stamp { stamp, .. } => {
             b.FPDFAnnot_SetStringValue_str(annot, "Name", stamp);
         }
+        AnnotGeom::Image { .. } => {
+            b.FPDFAnnot_SetStringValue_str(annot, "Name", IMAGE_STAMP_NAME);
+        }
     }
 
     b.FPDFAnnot_SetStringValue_str(annot, "NM", &format!("{NM_PREFIX}{}", a.id));
@@ -775,6 +797,12 @@ unsafe fn fill_annot(
     })?;
     b.FPDFAnnot_SetStringValue_str(annot, IBRIS_DATA_KEY, &json);
 
+    if let AnnotGeom::Image { rect, data_url } = &a.geom {
+        // The appearance is an appended image object; PDFium builds the
+        // /AP form for us. Never also SetAP - it would replace it.
+        append_image_object(b, doc, annot, space.rect(*rect), data_url)?;
+        return Ok(());
+    }
     let ap = appearance_stream(space, a)?;
     if b.FPDFAnnot_SetAP_str(annot, APPEARANCE_NORMAL, &ap) == 0 {
         return Err(PdfError::Internal {
@@ -782,6 +810,137 @@ unsafe fn fill_annot(
         });
     }
     Ok(())
+}
+
+/// Decodes a `data:image/png;base64,` URL and appends the pixels to the
+/// annotation as an image object scaled into `rect`. Fails on malformed
+/// data URLs, non-PNG payloads, or PDFium refusing the object.
+unsafe fn append_image_object(
+    b: &dyn PdfiumLibraryBindings,
+    doc: FPDF_DOCUMENT,
+    annot: FPDF_ANNOTATION,
+    rect: FS_RECTF,
+    data_url: &str,
+) -> Result<(), PdfError> {
+    let b64 = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| PdfError::Internal {
+            detail: "signature image is not a PNG data URL".into(),
+        })?;
+    let png = base64_decode(b64).ok_or_else(|| PdfError::Internal {
+        detail: "signature image base64 is malformed".into(),
+    })?;
+    let rgba = image::load_from_memory(&png)
+        .map_err(|e| PdfError::Internal {
+            detail: format!("signature image failed to decode: {e}"),
+        })?
+        .to_rgba8();
+    let (w, h) = (rgba.width() as i32, rgba.height() as i32);
+
+    let bitmap = unsafe { b.FPDFBitmap_Create(w, h, 1) };
+    if bitmap.is_null() {
+        return Err(PdfError::Internal {
+            detail: "FPDFBitmap_Create failed".into(),
+        });
+    }
+    let result = (|| unsafe {
+        let buf = b.FPDFBitmap_GetBuffer(bitmap).cast::<u8>();
+        if buf.is_null() {
+            return Err(PdfError::Internal {
+                detail: "FPDFBitmap_GetBuffer failed".into(),
+            });
+        }
+        let stride = b.FPDFBitmap_GetStride(bitmap) as usize;
+        // RGBA rows -> BGRA rows (PDFium bitmap format when alpha = 1).
+        let src = rgba.as_raw();
+        for y in 0..h as usize {
+            let row = &src[y * (w as usize) * 4..][..(w as usize) * 4];
+            let out = buf.add(y * stride);
+            for x in 0..w as usize {
+                *out.add(x * 4) = row[x * 4 + 2];
+                *out.add(x * 4 + 1) = row[x * 4 + 1];
+                *out.add(x * 4 + 2) = row[x * 4];
+                *out.add(x * 4 + 3) = row[x * 4 + 3];
+            }
+        }
+
+        let obj = b.FPDFPageObj_NewImageObj(doc);
+        if obj.is_null() {
+            return Err(PdfError::Internal {
+                detail: "FPDFPageObj_NewImageObj failed".into(),
+            });
+        }
+        if b.FPDFImageObj_SetBitmap(std::ptr::null_mut(), 0, obj, bitmap) == 0 {
+            b.FPDFPageObj_Destroy(obj);
+            return Err(PdfError::Internal {
+                detail: "FPDFImageObj_SetBitmap failed".into(),
+            });
+        }
+        // Unit-square image scaled and translated into the target rect.
+        let matrix = FS_MATRIX {
+            a: rect.right - rect.left,
+            b: 0.0,
+            c: 0.0,
+            d: rect.top - rect.bottom,
+            e: rect.left,
+            f: rect.bottom,
+        };
+        b.FPDFPageObj_SetMatrix(obj, &matrix);
+        if b.FPDFAnnot_AppendObject(annot, obj) == 0 {
+            b.FPDFPageObj_Destroy(obj);
+            return Err(PdfError::Internal {
+                detail: "FPDFAnnot_AppendObject failed".into(),
+            });
+        }
+        Ok(())
+    })();
+    // SetBitmap copies the pixels into the object; the bitmap is ours to
+    // free regardless of the outcome.
+    unsafe { b.FPDFBitmap_Destroy(bitmap) };
+    result
+}
+
+/// Standard-alphabet base64 (with padding); None on any invalid input.
+/// Hand-rolled: ~25 lines beats a dependency for one call site.
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    fn val(c: u8) -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some(u32::from(c - b'A')),
+            b'a'..=b'z' => Some(u32::from(c - b'a') + 26),
+            b'0'..=b'9' => Some(u32::from(c - b'0') + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let bytes: Vec<u8> = s.bytes().filter(|c| !c.is_ascii_whitespace()).collect();
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks(4) {
+        let pad = chunk.iter().filter(|&&c| c == b'=').count();
+        if chunk.len() != 4 || pad > 2 {
+            return None;
+        }
+        let mut acc = 0u32;
+        for (i, &c) in chunk.iter().enumerate() {
+            let v = if c == b'=' {
+                if i < 4 - pad {
+                    return None; // padding only at the end
+                }
+                0
+            } else {
+                val(c)?
+            };
+            acc = (acc << 6) | v;
+        }
+        out.push((acc >> 16) as u8);
+        if pad < 2 {
+            out.push((acc >> 8) as u8);
+        }
+        if pad < 1 {
+            out.push(acc as u8);
+        }
+    }
+    Some(out)
 }
 
 // ---- Reopen: reading our annotations back into the model (M2-PLAN §8) ----
@@ -964,10 +1123,18 @@ unsafe fn reconstruct_geom(
                 })
             }
         }
-        SUBTYPE_STAMP => Some(AnnotGeom::Stamp {
-            rect: space.inv_rect(&rect),
-            stamp: get_string_value(b, annot, "Name"),
-        }),
+        SUBTYPE_STAMP => {
+            let name = get_string_value(b, annot, "Name");
+            if name == IMAGE_STAMP_NAME {
+                // The pixels live only in the /AP; without IbrisData the
+                // model cannot be rebuilt. Leave it visible, read-only.
+                return None;
+            }
+            Some(AnnotGeom::Stamp {
+                rect: space.inv_rect(&rect),
+                stamp: name,
+            })
+        }
         _ => None,
     }
 }

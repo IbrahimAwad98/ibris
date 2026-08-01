@@ -21,6 +21,16 @@ export async function pickPdfs(): Promise<string[]> {
   return typeof picked === "string" ? [picked] : [];
 }
 
+/** Native picker for a signature image. PNG only — that is what the
+ * engine embeds (image crate built with the png feature alone). */
+export async function pickPngImage(): Promise<string | null> {
+  const picked = await open({
+    multiple: false,
+    filters: [{ name: "PNG images", extensions: ["png"] }],
+  });
+  return typeof picked === "string" ? picked : null;
+}
+
 /** Native save-as picker; null when the user cancels. */
 export async function pickSavePath(
   defaultPath?: string,
