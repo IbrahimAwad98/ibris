@@ -100,6 +100,17 @@ pub enum AnnotGeom {
     },
 }
 
+/// Every annotation we write carries `/NM = "ibris:<uuid>"`. The prefix is
+/// the ownership marker on reopen: it survives any tool that preserves
+/// annotation identity, and cannot false-positive on foreign annotations
+/// the way "looks like a UUID" can (Acrobat also writes GUID-shaped /NM).
+pub const NM_PREFIX: &str = "ibris:";
+
+/// Private annotation-dictionary key holding the full wire-model JSON.
+/// Fidelity upgrade only — reopen falls back to reconstructing from the
+/// standard keys when other software drops it (M2-PLAN §8).
+const IBRIS_DATA_KEY: &str = "IbrisData";
+
 // PDFium annotation subtype constants (fpdf_annot.h; stable public API).
 const SUBTYPE_TEXT: i32 = 1;
 const SUBTYPE_SQUARE: i32 = 5;
@@ -533,6 +544,8 @@ fn appearance_stream(space: &PageSpace, a: &AnnotationData) -> Result<String, Pd
 
 /// Deletes every annotation on `page` whose /NM is in `ids`, then returns.
 /// Descending index order so removal does not shift what is left to scan.
+/// Matches both prefixed (`ibris:<id>`) and bare `<id>` /NM values — files
+/// saved before the prefix existed carry the bare form.
 unsafe fn delete_ours(b: &dyn PdfiumLibraryBindings, page: FPDF_PAGE, ids: &[String]) {
     let count = b.FPDFPage_GetAnnotCount(page);
     for i in (0..count).rev() {
@@ -542,7 +555,8 @@ unsafe fn delete_ours(b: &dyn PdfiumLibraryBindings, page: FPDF_PAGE, ids: &[Str
         }
         let nm = get_string_value(b, annot, "NM");
         b.FPDFPage_CloseAnnot(annot);
-        if ids.contains(&nm) {
+        let bare = nm.strip_prefix(NM_PREFIX).unwrap_or(&nm);
+        if ids.iter().any(|id| id == bare) {
             b.FPDFPage_RemoveAnnot(page, i);
         }
     }
@@ -750,10 +764,16 @@ unsafe fn fill_annot(
         }
     }
 
-    b.FPDFAnnot_SetStringValue_str(annot, "NM", &a.id);
+    b.FPDFAnnot_SetStringValue_str(annot, "NM", &format!("{NM_PREFIX}{}", a.id));
     b.FPDFAnnot_SetStringValue_str(annot, "T", &a.author);
     b.FPDFAnnot_SetStringValue_str(annot, "M", &pdf_date(a.modified_at));
     b.FPDFAnnot_SetStringValue_str(annot, "CreationDate", &pdf_date(a.created_at));
+    // Full wire-model JSON for lossless reopen; reconstruction from the
+    // standard keys above covers files where a tool strips this key.
+    let json = serde_json::to_string(a).map_err(|e| PdfError::Internal {
+        detail: format!("serialising {}: {e}", a.id),
+    })?;
+    b.FPDFAnnot_SetStringValue_str(annot, IBRIS_DATA_KEY, &json);
 
     let ap = appearance_stream(space, a)?;
     if b.FPDFAnnot_SetAP_str(annot, APPEARANCE_NORMAL, &ap) == 0 {
@@ -762,6 +782,300 @@ unsafe fn fill_annot(
         });
     }
     Ok(())
+}
+
+// ---- Reopen: reading our annotations back into the model (M2-PLAN §8) ----
+
+impl PageSpace {
+    /// PDF space → top-left page point (inverse of [`PageSpace::point`]).
+    fn inv_point(&self, x: f32, y: f32) -> AnnotPoint {
+        AnnotPoint {
+            x: x - self.box_left,
+            y: self.box_top - y,
+        }
+    }
+    /// PDF-space FS_RECTF → top-left rect (inverse of [`PageSpace::rect`]).
+    fn inv_rect(&self, r: &FS_RECTF) -> AnnotRect {
+        AnnotRect {
+            x: r.left - self.box_left,
+            y: self.box_top - r.top,
+            width: r.right - r.left,
+            height: r.top - r.bottom,
+        }
+    }
+}
+
+/// First colour set by `op` ("RG" stroke / "rg" fill) in an appearance
+/// stream, as "#rrggbb". Best-effort: used only when FPDFAnnot_GetColor
+/// refuses to answer (it does once an /AP exists).
+fn ap_color(ap: &str, op: &str) -> Option<String> {
+    let tokens: Vec<&str> = ap.split_ascii_whitespace().collect();
+    let at = tokens.iter().position(|t| *t == op)?;
+    if at < 3 {
+        return None;
+    }
+    let chan = |s: &str| -> Option<u8> {
+        let v: f32 = s.parse().ok()?;
+        Some((v.clamp(0.0, 1.0) * 255.0).round() as u8)
+    };
+    let (r, g, b) = (
+        chan(tokens[at - 3])?,
+        chan(tokens[at - 2])?,
+        chan(tokens[at - 1])?,
+    );
+    Some(format!("#{r:02x}{g:02x}{b:02x}"))
+}
+
+/// "D:YYYYMMDDHHMMSS…" → epoch ms; 0 when unparseable (display-only data).
+fn parse_pdf_date(m: &str) -> i64 {
+    let digits: String = m
+        .strip_prefix("D:")
+        .unwrap_or(m)
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    if digits.len() < 14 {
+        return 0;
+    }
+    chrono::NaiveDateTime::parse_from_str(&digits[..14], "%Y%m%d%H%M%S")
+        .map(|dt| dt.and_utc().timestamp_millis())
+        .unwrap_or(0)
+}
+
+unsafe fn read_quads(
+    b: &dyn PdfiumLibraryBindings,
+    annot: FPDF_ANNOTATION,
+    space: &PageSpace,
+) -> Vec<AnnotRect> {
+    let count = b.FPDFAnnot_CountAttachmentPoints(annot);
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let mut q = FS_QUADPOINTSF {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 0.0,
+            y2: 0.0,
+            x3: 0.0,
+            y3: 0.0,
+            x4: 0.0,
+            y4: 0.0,
+        };
+        if b.FPDFAnnot_GetAttachmentPoints(annot, i, &mut q) != 0 {
+            out.push(space.inv_rect(&FS_RECTF {
+                left: q.x1.min(q.x3),
+                top: q.y1.max(q.y2),
+                right: q.x2.max(q.x4),
+                bottom: q.y3.min(q.y4),
+            }));
+        }
+    }
+    out
+}
+
+unsafe fn read_ink_strokes(
+    b: &dyn PdfiumLibraryBindings,
+    annot: FPDF_ANNOTATION,
+    space: &PageSpace,
+) -> Vec<Vec<AnnotPoint>> {
+    let strokes = b.FPDFAnnot_GetInkListCount(annot);
+    let mut out = Vec::with_capacity(strokes as usize);
+    for i in 0..strokes {
+        let len = b.FPDFAnnot_GetInkListPath(annot, i, std::ptr::null_mut(), 0);
+        if len == 0 {
+            continue;
+        }
+        let mut buf = vec![FS_POINTF { x: 0.0, y: 0.0 }; len as usize];
+        b.FPDFAnnot_GetInkListPath(annot, i, buf.as_mut_ptr(), len);
+        out.push(buf.iter().map(|p| space.inv_point(p.x, p.y)).collect());
+    }
+    out
+}
+
+/// Best-effort model rebuild from standard PDF keys, for an `ibris:`-tagged
+/// annotation whose IbrisData key was stripped by other software. Returns
+/// `None` for shapes we cannot faithfully model — the caller then leaves
+/// the annotation in the viewing document, visible but read-only.
+unsafe fn reconstruct_geom(
+    b: &dyn PdfiumLibraryBindings,
+    annot: FPDF_ANNOTATION,
+    space: &PageSpace,
+    ap: &str,
+) -> Option<AnnotGeom> {
+    let mut rect = FS_RECTF {
+        left: 0.0,
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+    };
+    b.FPDFAnnot_GetRect(annot, &mut rect);
+    let (mut hr, mut vr, mut border) = (0f32, 0f32, 1f32);
+    b.FPDFAnnot_GetBorder(annot, &mut hr, &mut vr, &mut border);
+
+    match b.FPDFAnnot_GetSubtype(annot) {
+        SUBTYPE_HIGHLIGHT => Some(AnnotGeom::Highlight {
+            quads: read_quads(b, annot, space),
+        }),
+        SUBTYPE_UNDERLINE => Some(AnnotGeom::Underline {
+            quads: read_quads(b, annot, space),
+        }),
+        SUBTYPE_STRIKEOUT => Some(AnnotGeom::Strikeout {
+            quads: read_quads(b, annot, space),
+        }),
+        SUBTYPE_TEXT => Some(AnnotGeom::Note {
+            at: space.inv_point(rect.left, rect.top),
+            contents: get_string_value(b, annot, "Contents"),
+        }),
+        SUBTYPE_SQUARE | SUBTYPE_CIRCLE => {
+            // We wrote /Rect inflated by the stroke width; deflate it back.
+            let deflated = inflate(rect, -border.max(1.0));
+            let r = space.inv_rect(&deflated);
+            let fill = ap_color(ap, "rg");
+            if b.FPDFAnnot_GetSubtype(annot) == SUBTYPE_SQUARE {
+                Some(AnnotGeom::Rect {
+                    rect: r,
+                    stroke_width: border,
+                    fill,
+                })
+            } else {
+                Some(AnnotGeom::Ellipse {
+                    rect: r,
+                    stroke_width: border,
+                    fill,
+                })
+            }
+        }
+        SUBTYPE_INK => {
+            let strokes = read_ink_strokes(b, annot, space);
+            // A single two-point stroke is one of our lines or arrows; the
+            // head cannot be told apart from the standard keys, so an arrow
+            // degrades to a line (documented in M2-PLAN §8).
+            if strokes.len() == 1 && strokes[0].len() == 2 {
+                Some(AnnotGeom::Line {
+                    from: strokes[0][0],
+                    to: strokes[0][1],
+                    stroke_width: border,
+                })
+            } else if strokes.is_empty() {
+                None
+            } else {
+                Some(AnnotGeom::Ink {
+                    strokes,
+                    stroke_width: border,
+                })
+            }
+        }
+        SUBTYPE_STAMP => Some(AnnotGeom::Stamp {
+            rect: space.inv_rect(&rect),
+            stamp: get_string_value(b, annot, "Name"),
+        }),
+        _ => None,
+    }
+}
+
+/// Everything `open` recovers about our own saved annotations.
+pub struct RecoveredAnnotations {
+    /// Rebuilt wire models, ready for the frontend document store.
+    pub annotations: Vec<AnnotationData>,
+    /// The exact /NM values to suppress in the viewing document so the
+    /// page bitmap never double-renders against the SVG overlay. Only
+    /// successfully modelled annotations are listed — anything else stays
+    /// visible (read-only), never silently dropped.
+    pub suppress_names: Vec<String>,
+}
+
+/// Scans `doc` for `ibris:`-tagged annotations and rebuilds their models:
+/// from the IbrisData JSON when present, else from standard keys
+/// (M2-PLAN §8). Never fails — a file with no recoverable annotations
+/// yields empty vectors.
+///
+/// # Safety
+/// `doc` must be a live document handle from the same PDFium instance as
+/// `b`, and the caller must be on the engine thread (decision 008).
+pub unsafe fn read_ibris_annotations(
+    b: &dyn PdfiumLibraryBindings,
+    doc: FPDF_DOCUMENT,
+) -> RecoveredAnnotations {
+    let mut annotations = Vec::new();
+    let mut suppress_names = Vec::new();
+    let page_count = unsafe { b.FPDF_GetPageCount(doc) };
+    for page_index in 0..page_count {
+        unsafe {
+            let page = b.FPDF_LoadPage(doc, page_index);
+            if page.is_null() {
+                continue;
+            }
+            let (box_left, box_top) = raw_visible_box_origin(b, page);
+            let space = PageSpace { box_left, box_top };
+            let count = b.FPDFPage_GetAnnotCount(page);
+            for i in 0..count {
+                let annot = b.FPDFPage_GetAnnot(page, i);
+                if annot.is_null() {
+                    continue;
+                }
+                let nm = get_string_value(b, annot, "NM");
+                if let Some(id) = nm.strip_prefix(NM_PREFIX) {
+                    if let Some(a) = recover_one(b, annot, &space, id, page_index as u16) {
+                        annotations.push(a);
+                        suppress_names.push(nm.clone());
+                    }
+                }
+                b.FPDFPage_CloseAnnot(annot);
+            }
+            b.FPDF_ClosePage(page);
+        }
+    }
+    RecoveredAnnotations {
+        annotations,
+        suppress_names,
+    }
+}
+
+unsafe fn recover_one(
+    b: &dyn PdfiumLibraryBindings,
+    annot: FPDF_ANNOTATION,
+    space: &PageSpace,
+    id: &str,
+    page_index: u16,
+) -> Option<AnnotationData> {
+    // Full fidelity: the embedded wire model. Identity and page come from
+    // the file itself — another tool may have reordered pages since.
+    let json = get_string_value(b, annot, IBRIS_DATA_KEY);
+    if !json.is_empty() {
+        if let Ok(mut a) = serde_json::from_str::<AnnotationData>(&json) {
+            a.id = id.to_string();
+            a.page_index = page_index;
+            return Some(a);
+        }
+    }
+
+    // Reconstruction from standard keys.
+    let ap = get_appearance(b, annot);
+    let geom = reconstruct_geom(b, annot, space, &ap)?;
+    let (mut cr, mut cg, mut cb, mut ca) = (0u32, 0u32, 0u32, 0u32);
+    let color =
+        if b.FPDFAnnot_GetColor(annot, COLORTYPE_COLOR, &mut cr, &mut cg, &mut cb, &mut ca) != 0 {
+            format!("#{:02x}{:02x}{:02x}", cr as u8, cg as u8, cb as u8)
+        } else {
+            // GetColor refuses once an /AP exists; the stream knows the colour.
+            let op = if matches!(geom, AnnotGeom::Highlight { .. }) {
+                "rg"
+            } else {
+                "RG"
+            };
+            ap_color(&ap, op).unwrap_or_else(|| "#e0483c".to_string())
+        };
+    let mut opacity = 1.0f32;
+    b.FPDFAnnot_GetNumberValue(annot, "CA", &mut opacity);
+    Some(AnnotationData {
+        id: id.to_string(),
+        page_index,
+        color,
+        opacity,
+        author: get_string_value(b, annot, "T"),
+        created_at: parse_pdf_date(&get_string_value(b, annot, "CreationDate")),
+        modified_at: parse_pdf_date(&get_string_value(b, annot, "M")),
+        geom,
+    })
 }
 
 /// A saved annotation read back for verification: identity plus enough

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOutline, type OutlineNode } from "../../ipc/pdf";
 import { HistoryPanel } from "../annotations/HistoryPanel";
+import { ThumbnailPanel } from "./ThumbnailPanel";
 import { navigateToMatch, useSearchStore } from "../../state/search-store";
 import { useUiStore, type SidebarTab } from "../../state/ui-store";
-import { useViewerStore } from "../../state/viewer-store";
+import { pageOrderOf, useViewerStore } from "../../state/viewer-store";
 
 /** Collapsible, resizable sidebar: thumbnails, outline, search results. */
 export function Sidebar() {
@@ -97,7 +98,7 @@ export function Sidebar() {
         ))}
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {tab === "thumbnails" && <ThumbnailList />}
+        {tab === "thumbnails" && <ThumbnailPanel />}
         {tab === "outline" && <OutlineList nodes={outline} depth={0} />}
         {tab === "search" && <SearchPanel />}
         {tab === "history" && <HistoryPanel />}
@@ -118,84 +119,21 @@ export function Sidebar() {
   );
 }
 
-// ponytail: all thumbnails render as small canvases with no windowing —
-// ~300 tiny canvases is fine; virtualize if 1000+-page docs ever hitch.
-function ThumbnailList() {
-  const pages = useViewerStore((s) => s.pages);
-  const currentPage = useViewerStore((s) => s.currentPage);
-  const scrollToPage = useViewerStore((s) => s.scrollToPage);
-
-  return (
-    <div style={{ padding: 8 }}>
-      {pages.map((_, i) => (
-        <Thumbnail
-          key={i}
-          pageIndex={i}
-          active={i === currentPage}
-          onClick={() => scrollToPage(i)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Thumbnail({
-  pageIndex,
-  active,
-  onClick,
-}: {
-  pageIndex: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const preview = useViewerStore((s) => s.previews.get(pageIndex));
-  const dark = useUiStore((s) => s.resolvedTheme === "dark");
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    // Previews render pre-inverted in dark mode; match their paper colour.
-    ctx.fillStyle = dark ? "#000" : "#fff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (preview) {
-      ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
-    }
-  }, [preview, dark]);
-
-  return (
-    <div
-      onClick={onClick}
-      style={{ marginBottom: 10, cursor: "pointer", textAlign: "center" }}
-    >
-      <canvas
-        ref={canvasRef}
-        width={108}
-        height={140}
-        style={{
-          width: "80%",
-          border: active
-            ? "2px solid var(--accent-soft)"
-            : "2px solid transparent",
-          background: dark ? "#000" : "#fff",
-        }}
-      />
-      <div style={{ fontSize: 11, opacity: 0.7 }}>{pageIndex + 1}</div>
-    </div>
-  );
-}
-
 function OutlineList({ nodes, depth }: { nodes: OutlineNode[]; depth: number }) {
   const scrollToPage = useViewerStore((s) => s.scrollToPage);
+  // Outline targets are source pages; scrolling wants view slots.
+  const toView = (src: number) =>
+    pageOrderOf(useViewerStore.getState()).indexOf(src);
   return (
     <div style={{ padding: depth === 0 ? 8 : 0 }}>
       {nodes.map((node, i) => (
         <div key={i}>
           <div
-            onClick={() =>
-              node.pageIndex !== null && scrollToPage(node.pageIndex)
-            }
+            onClick={() => {
+              if (node.pageIndex === null) return;
+              const view = toView(node.pageIndex);
+              if (view !== -1) scrollToPage(view);
+            }}
             style={{
               padding: "4px 8px",
               paddingLeft: 8 + depth * 16,

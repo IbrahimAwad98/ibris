@@ -193,24 +193,52 @@ impl PdfService {
         Ok(())
     }
 
-    /// Applies annotations to the file at `path` and rewrites it in place.
-    /// The viewing document is untouched (see pdf/save.rs). Fails with
-    /// `Io`, `Corrupt`, or `Internal`.
-    pub async fn save_annotated(
+    /// Applies structure and annotations to the file at `src_path`, writing
+    /// the result to `dest_path` (same path means an in-place save; a
+    /// subset order with another path is an extraction). The viewing
+    /// document is untouched (see pdf/save.rs). Fails with `Io`,
+    /// `Corrupt`, or `Internal`.
+    #[allow(clippy::too_many_arguments)] // mirrors the wire format
+    pub async fn save_document(
         &self,
-        path: PathBuf,
+        src_path: PathBuf,
+        dest_path: PathBuf,
+        order: Vec<i32>,
+        inserts: Vec<super::save::InsertSource>,
+        rotations: Vec<(u16, u16)>,
         annotations: Vec<super::annot::AnnotationData>,
         our_ids: Vec<String>,
     ) -> Result<(), PdfError> {
         let (reply, rx) = oneshot::channel();
-        EngineHandle::global().send(EngineMsg::SaveAnnotated {
-            path,
+        EngineHandle::global().send(EngineMsg::SaveDocument {
+            src_path,
+            dest_path,
+            order,
+            inserts,
+            rotations,
             annotations,
             our_ids,
             reply,
         })?;
         rx.await.map_err(|_| PdfError::Internal {
             detail: "engine dropped the save request".into(),
+        })?
+    }
+
+    /// Concatenates whole files into a new document at `dest_path`.
+    pub async fn merge_documents(
+        &self,
+        paths: Vec<PathBuf>,
+        dest_path: PathBuf,
+    ) -> Result<(), PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::MergeDocuments {
+            paths,
+            dest_path,
+            reply,
+        })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the merge request".into(),
         })?
     }
 

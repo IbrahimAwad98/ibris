@@ -51,6 +51,27 @@ export interface ToolState {
   setSelectedId: (id: string | null) => void;
 }
 
+/**
+ * Rehydration merge. Only the partialized keys (settings, author, stamp)
+ * may come back from storage — everything else, `tool` above all, is
+ * session state. A blanket `...persisted` here once let a stale `tool`
+ * key from an older dev build activate Underline on every launch.
+ * Exported for tests.
+ */
+export function mergePersistedToolState(
+  persisted: unknown,
+  current: ToolState,
+): ToolState {
+  const p = (persisted ?? {}) as Partial<ToolState>;
+  return {
+    ...current,
+    ...(p.author !== undefined ? { author: p.author } : {}),
+    ...(p.stamp !== undefined ? { stamp: p.stamp } : {}),
+    // Deep-merge settings so new tools added later keep their defaults.
+    settings: { ...current.settings, ...(p.settings ?? {}) },
+  };
+}
+
 export const useToolStore = create<ToolState>()(
   persist(
     (set, get) => ({
@@ -78,15 +99,7 @@ export const useToolStore = create<ToolState>()(
         author: s.author,
         stamp: s.stamp,
       }),
-      merge: (persisted, current) => {
-        // Deep-merge settings so new tools added later keep their defaults.
-        const p = (persisted ?? {}) as Partial<ToolState>;
-        return {
-          ...current,
-          ...p,
-          settings: { ...current.settings, ...(p.settings ?? {}) },
-        };
-      },
+      merge: mergePersistedToolState,
     },
   ),
 );

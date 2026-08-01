@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Annotation } from "../lib/annotations";
 import {
   addAnnotation,
+  insertPages,
+  insertRef,
   MAX_STACK,
   modifyAnnotation,
   removeAnnotation,
+  rotatePages,
+  setPageOrder,
   useDocumentStore,
 } from "./document-store";
 
@@ -28,6 +32,84 @@ function makeNote(
 
 beforeEach(() => {
   useDocumentStore.getState().reset();
+});
+
+describe("reopened annotations (M2-PLAN §8)", () => {
+  it("a reopened annotation is deletable and undo restores it intact", () => {
+    // The seed loadEditState performs from engine-recovered annotations:
+    // clean stack, savedIds covering everything already in the file.
+    const reopened = makeNote("saved-1", "from the file");
+    useDocumentStore.getState().restore(
+      {
+        annotations: { "saved-1": reopened },
+        pageOrder: null,
+        rotations: {},
+        inserts: [],
+        commands: [],
+        cursor: 0,
+        savedCursor: 0,
+        savedIds: ["saved-1"],
+      },
+      { size: 100, mtimeMs: 1 },
+    );
+    expect(useDocumentStore.getState().isDirty()).toBe(false);
+
+    useDocumentStore.getState().execute(removeAnnotation(reopened));
+    expect(useDocumentStore.getState().annotations["saved-1"]).toBeUndefined();
+    expect(useDocumentStore.getState().isDirty()).toBe(true);
+    // savedIds must survive the delete: the next save still has to remove
+    // the annotation from the file on disk.
+    expect(useDocumentStore.getState().savedIds).toEqual(["saved-1"]);
+
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().annotations["saved-1"]).toEqual(reopened);
+    expect(useDocumentStore.getState().isDirty()).toBe(false);
+  });
+});
+
+describe("page reorder (M3)", () => {
+  it("reorder then undo restores the order and keeps annotations on their pages", () => {
+    const s = useDocumentStore.getState();
+    s.initStructure(3);
+    const note = { ...makeNote("n1"), pageIndex: 2 };
+    s.execute(addAnnotation(note));
+
+    useDocumentStore
+      .getState()
+      .execute(setPageOrder([0, 1, 2], [2, 0, 1], "Reorder pages"));
+    // Annotations reference *source* pages, so the reorder moves them with
+    // their page by construction — the record must not touch them.
+    expect(useDocumentStore.getState().pageOrder).toEqual([2, 0, 1]);
+    expect(useDocumentStore.getState().annotations["n1"]?.pageIndex).toBe(2);
+
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, 1, 2]);
+    expect(useDocumentStore.getState().annotations["n1"]).toEqual(note);
+
+    useDocumentStore.getState().redo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([2, 0, 1]);
+    expect(useDocumentStore.getState().annotations["n1"]).toEqual(note);
+  });
+});
+
+describe("insert pages from file (M3)", () => {
+  it("insert, undo, redo keeps the order and the registered pages consistent", () => {
+    const s = useDocumentStore.getState();
+    s.initStructure(2);
+    const page = { path: "C:\\docs\\other.pdf", pageIndex: 0, width: 612, height: 792 };
+    s.execute(
+      insertPages([0, 1], [0, insertRef(0), 1], 0, [page], "Insert page"),
+    );
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, -1, 1]);
+    expect(useDocumentStore.getState().inserts).toEqual([page]);
+
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, 1]);
+
+    useDocumentStore.getState().redo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, -1, 1]);
+    expect(useDocumentStore.getState().inserts).toEqual([page]);
+  });
 });
 
 describe("execute / undo / redo", () => {
@@ -133,6 +215,9 @@ describe("serialisation", () => {
     useDocumentStore.getState().restore(
       {
         annotations: wire.annotations,
+        pageOrder: null,
+        rotations: {},
+        inserts: [],
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,
@@ -149,6 +234,54 @@ describe("serialisation", () => {
     expect(useDocumentStore.getState().annotations["n1"]).toMatchObject({
       contents: "serialised",
     });
+  });
+});
+
+describe("page structure commands", () => {
+  it("reorders pages and undo restores order and annotations", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(3);
+    // Annotation on source page 2.
+    s().execute(addAnnotation({ ...makeNote("n1"), pageIndex: 2 }));
+    s().execute(setPageOrder([0, 1, 2], [2, 0, 1], "Move page 3 first"));
+
+    expect(s().pageOrder).toEqual([2, 0, 1]);
+    // The annotation still references source page 2 — it moved with it.
+    expect(s().annotations["n1"].pageIndex).toBe(2);
+
+    s().undo();
+    expect(s().pageOrder).toEqual([0, 1, 2]);
+    expect(s().annotations["n1"].pageIndex).toBe(2);
+  });
+
+  it("deleting a page is an order change; undo brings it back", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(3);
+    s().execute(setPageOrder([0, 1, 2], [0, 2], "Delete page 2"));
+    expect(s().pageOrder).toEqual([0, 2]);
+    s().undo();
+    expect(s().pageOrder).toEqual([0, 1, 2]);
+  });
+
+  it("rotation round-trips through undo including implicit zero", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(2);
+    s().execute(rotatePages({ 1: 0 }, { 1: 90 }, "Rotate page 2"));
+    expect(s().rotations[1]).toBe(90);
+    s().execute(rotatePages({ 1: 90 }, { 1: 180 }, "Rotate page 2"));
+    expect(s().rotations[1]).toBe(180);
+    s().undo();
+    expect(s().rotations[1]).toBe(90);
+    s().undo();
+    expect(s().rotations[1]).toBe(0);
+  });
+
+  it("initStructure never clobbers a restored order", () => {
+    const s = useDocumentStore.getState;
+    s().initStructure(3);
+    s().execute(setPageOrder([0, 1, 2], [2, 1, 0], "Reverse"));
+    s().initStructure(3);
+    expect(s().pageOrder).toEqual([2, 1, 0]);
   });
 });
 
