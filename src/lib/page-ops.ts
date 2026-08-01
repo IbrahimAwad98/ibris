@@ -27,3 +27,12 @@ export function removeSlots(order: number[], selected: number[]): number[] {
   const next = order.filter((_, i) => !sel.has(i));
   return next.length === 0 ? order : next;
 }
+
+/**
+ * The sibling path for the second half of a split. "…part 1.pdf" becomes
+ * "…part 2.pdf"; anything else gets " - part 2" before the extension.
+ */
+export function siblingPartPath(firstPart: string): string {
+  if (/part 1/i.test(firstPart)) return firstPart.replace(/part 1/i, "part 2");
+  return firstPart.replace(/(\.pdf)?$/i, " - part 2$1");
+}

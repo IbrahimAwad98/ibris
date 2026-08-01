@@ -234,3 +234,12 @@ at the bottom. Branch per milestone; nothing pushed.
   code path that could produce it is now closed. Also added the M3
   store test: reorder + undo/redo restores order with annotations
   keyed to source pages throughout.
+
+- **2026-08-01 22:05** — M3 palette commands landed: Extract current
+  page…, Split at current page… (two files via siblingPartPath; split
+  disabled on the first page), Merge PDFs… (multi-pick + destination;
+  result opens in a new tab). All ride the existing engine surface —
+  `saveSubset` maps view slots → source pages and passes current
+  rotations/annotations, so extracted pages leave exactly as shown,
+  saved or not. Commands are palette-only (no shortcuts). Not done via
+  UI interaction (no synthetic input): on the manual checklist.
