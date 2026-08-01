@@ -46,12 +46,14 @@ export async function renderPage(
   docId: number,
   pageIndex: number,
   scale: number,
+  invert: boolean,
   requestId: number,
 ): Promise<RenderedPage> {
   const buf = await invoke<ArrayBuffer>("render_page", {
     docId,
     pageIndex,
     scale,
+    invert,
     requestId,
   });
   const view = new DataView(buf);
@@ -75,6 +77,7 @@ export async function renderTile(
   pageIndex: number,
   scale: number,
   tile: TileRect,
+  invert: boolean,
   requestId: number,
 ): Promise<RenderedPage> {
   const buf = await invoke<ArrayBuffer>("render_tile", {
@@ -85,6 +88,7 @@ export async function renderTile(
     tileY: tile.y,
     tileWidth: tile.width,
     tileHeight: tile.height,
+    invert,
     requestId,
   });
   const view = new DataView(buf);
@@ -171,4 +175,9 @@ export async function getOutline(docId: number): Promise<OutlineNode[]> {
 
 export async function closeDocument(docId: number): Promise<void> {
   await invoke("close_document", { docId });
+}
+
+/** Hints the engine which document is visible; its queued work runs first. */
+export async function setActiveDocument(docId: number | null): Promise<void> {
+  await invoke("set_active_document", { docId });
 }

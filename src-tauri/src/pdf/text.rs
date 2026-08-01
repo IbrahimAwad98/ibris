@@ -56,7 +56,7 @@ struct CharBox {
 /// in absolute page space. Char boxes are absolute, but the rendered bitmap
 /// starts at this origin — documents with a non-(0,0) box origin exist in
 /// the wild, and ignoring it offsets every rect by the origin in points.
-fn visible_box_origin(page: &PdfPage<'_>) -> (f32, f32) {
+pub(crate) fn visible_box_origin(page: &PdfPage<'_>) -> (f32, f32) {
     let boundaries = page.boundaries();
     let rect = boundaries
         .crop()

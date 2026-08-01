@@ -70,6 +70,13 @@ export function PageList() {
         }
       }
       setCurrentPage(current);
+      const scale = useViewerStore.getState().scale;
+      useViewerStore.setState({
+        scrollYPt: {
+          page: current,
+          yPt: (el.scrollTop - offsets[current]) / scale,
+        },
+      });
     }
   }, [heights, offsets, setCurrentPage]);
 
@@ -106,72 +113,22 @@ export function PageList() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [setScale]);
 
-  // Keyboard zoom and fit shortcuts.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!e.ctrlKey) return;
-      const el = containerRef.current;
-      const s = useViewerStore.getState();
-      const centre = el
-        ? { x: el.clientWidth / 2, y: el.clientHeight / 2 }
-        : { x: 0, y: 0 };
-      const currentPt = s.pages[s.currentPage];
-      if (!currentPt) return;
-      const rot = pageRotation(s, s.currentPage);
-      switch (e.key) {
-        case "=":
-        case "+":
-          e.preventDefault();
-          setScale(zoomIn(s.scale), { anchor: centre });
-          break;
-        case "-":
-          e.preventDefault();
-          setScale(zoomOut(s.scale), { anchor: centre });
-          break;
-        case "0":
-          e.preventDefault();
-          if (el)
-            setScale(
-              fitPageScale(
-                { width: el.clientWidth, height: el.clientHeight },
-                currentPt,
-                rot,
-                PAGE_GAP,
-              ),
-              { fitMode: "page", anchor: centre },
-            );
-          break;
-        case "1":
-          e.preventDefault();
-          setScale(1, { anchor: centre });
-          break;
-        case "2":
-          e.preventDefault();
-          if (el)
-            setScale(fitWidthScale(el.clientWidth, currentPt, rot, PAGE_GAP), {
-              fitMode: "width",
-              anchor: centre,
-            });
-          break;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setScale]);
+  // Keyboard zoom/fit shortcuts live in the command registry (shell).
 
   // Navigation requests (thumbnails, outline, search) land here.
   const scrollTarget = useViewerStore((s) => s.scrollTarget);
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !scrollTarget) return;
-    const { page, yPt } = scrollTarget;
+    const { page, yPt, exact } = scrollTarget;
     if (page < 0 || page >= offsets.length) return;
+    // Exact targets carry display-space offsets (tab/session restore) and
+    // land verbatim; search-match targets carry PDF-space offsets, only
+    // meaningful unrotated, and bias down a third for context.
     const withinPage =
-      yPt !== undefined && rotations[page] === 0 ? yPt * scale : 0;
-    el.scrollTop = Math.max(
-      0,
-      offsets[page] + withinPage - (yPt !== undefined ? el.clientHeight / 3 : 0),
-    );
+      yPt !== undefined && (exact || rotations[page] === 0) ? yPt * scale : 0;
+    const bias = yPt !== undefined && !exact ? el.clientHeight / 3 : 0;
+    el.scrollTop = Math.max(0, offsets[page] + withinPage - bias);
     update();
   }, [scrollTarget, offsets, rotations, scale, update]);
 

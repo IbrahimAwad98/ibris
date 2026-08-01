@@ -63,13 +63,15 @@ export function Sidebar() {
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
-        background: "#2a2a2e",
-        borderRight: "1px solid #55555c",
+        background: "var(--bg-sidebar)",
+        borderRight: "1px solid var(--border)",
         position: "relative",
         userSelect: "none",
       }}
     >
-      <div style={{ display: "flex", borderBottom: "1px solid #55555c" }}>
+      <div
+        style={{ display: "flex", borderBottom: "1px solid var(--border)" }}
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -78,11 +80,13 @@ export function Sidebar() {
               flex: 1,
               padding: "8px 4px",
               fontSize: 12,
-              background: tab === t.id ? "#3a3a40" : "transparent",
-              color: "#ececec",
+              background: tab === t.id ? "var(--bg-active)" : "transparent",
+              color: "var(--text)",
               border: "none",
               borderBottom:
-                tab === t.id ? "2px solid #6a9fff" : "2px solid transparent",
+                tab === t.id
+                  ? "2px solid var(--accent-soft)"
+                  : "2px solid transparent",
               cursor: "pointer",
             }}
           >
@@ -142,18 +146,20 @@ function Thumbnail({
   onClick: () => void;
 }) {
   const preview = useViewerStore((s) => s.previews.get(pageIndex));
+  const dark = useUiStore((s) => s.resolvedTheme === "dark");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    ctx.fillStyle = "#fff";
+    // Previews render pre-inverted in dark mode; match their paper colour.
+    ctx.fillStyle = dark ? "#000" : "#fff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (preview) {
       ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
     }
-  }, [preview]);
+  }, [preview, dark]);
 
   return (
     <div
@@ -166,8 +172,10 @@ function Thumbnail({
         height={140}
         style={{
           width: "80%",
-          border: active ? "2px solid #6a9fff" : "2px solid transparent",
-          background: "#fff",
+          border: active
+            ? "2px solid var(--accent-soft)"
+            : "2px solid transparent",
+          background: dark ? "#000" : "#fff",
         }}
       />
       <div style={{ fontSize: 11, opacity: 0.7 }}>{pageIndex + 1}</div>
@@ -226,7 +234,7 @@ function SearchPanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: 8, borderBottom: "1px solid #55555c" }}>
+      <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
         <input
           ref={inputRef}
           value={input}
@@ -244,9 +252,9 @@ function SearchPanel() {
           style={{
             width: "100%",
             padding: 6,
-            background: "#1e1e22",
-            color: "#ececec",
-            border: "1px solid #55555c",
+            background: "var(--bg-input)",
+            color: "var(--text)",
+            border: "1px solid var(--border)",
             borderRadius: 4,
             boxSizing: "border-box",
           }}
@@ -292,8 +300,9 @@ function SearchPanel() {
               padding: "6px 10px",
               fontSize: 12,
               cursor: "pointer",
-              background: i === currentIndex ? "#3a3a40" : "transparent",
-              borderBottom: "1px solid #38383e",
+              background:
+                i === currentIndex ? "var(--bg-active)" : "transparent",
+              borderBottom: "1px solid var(--border-deep)",
             }}
           >
             <div style={{ opacity: 0.6, marginBottom: 2 }}>

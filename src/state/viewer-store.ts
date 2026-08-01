@@ -9,6 +9,7 @@ import {
 
 import type { Rotation } from "../lib/coords";
 import { clampScale } from "../lib/zoom";
+import { useUiStore } from "./ui-store";
 
 /** Gap between pages in layout pixels. */
 export const PAGE_GAP = 16;
@@ -33,9 +34,25 @@ export interface ViewerState {
   rotationByPage: Readonly<Record<number, Rotation>>;
   /** Topmost visible page, kept current by PageList. */
   currentPage: number;
-  /** Pending navigation, consumed by PageList. yPt is a page-top offset in points. */
-  scrollTarget: { page: number; yPt?: number; nonce: number } | null;
+  /**
+   * Live scroll position, written by PageList on scroll: display-space
+   * points below the top of `page`. Snapshotted per tab and per session.
+   */
+  scrollYPt: { page: number; yPt: number } | null;
+  /**
+   * Pending navigation, consumed by PageList. yPt is a page-top offset in
+   * points; `exact` restores it verbatim (tab/session restore) instead of
+   * biasing a third of the viewport down like search-match navigation.
+   */
+  scrollTarget: {
+    page: number;
+    yPt?: number;
+    exact?: boolean;
+    nonce: number;
+  } | null;
   openPath: (path: string) => Promise<void>;
+  /** Renders low-res previews for any page that still lacks one. */
+  resumePreviews: () => Promise<void>;
   close: () => Promise<void>;
   setScale: (
     scale: number,
@@ -44,7 +61,20 @@ export interface ViewerState {
   rotateDoc: () => void;
   rotatePage: (pageIndex: number) => void;
   setCurrentPage: (pageIndex: number) => void;
-  scrollToPage: (page: number, yPt?: number) => void;
+  scrollToPage: (page: number, yPt?: number, exact?: boolean) => void;
+}
+
+/**
+ * Bumped whenever the viewer is pointed at a different document (open,
+ * close, or a tab hydrate). In-flight openPath/resumePreviews work checks
+ * it after every await and abandons itself when superseded.
+ */
+let openNonce = 0;
+
+/** Invalidates any in-flight open or preview pass; the tab shell calls
+ * this before swapping the viewer's state to another document. */
+export function invalidateOpen(): void {
+  openNonce += 1;
 }
 
 /** Effective rotation of a page: document rotation plus its own. */
@@ -64,6 +94,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   rotationDoc: 0,
   rotationByPage: {},
   currentPage: 0,
+  scrollYPt: null,
   scrollTarget: null,
 
   setScale: (scale, opts) => {
@@ -90,47 +121,73 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setCurrentPage: (pageIndex) =>
     get().currentPage === pageIndex ? undefined : set({ currentPage: pageIndex }),
 
-  scrollToPage: (page, yPt) =>
+  scrollToPage: (page, yPt, exact) =>
     set((s) => ({
-      scrollTarget: { page, yPt, nonce: (s.scrollTarget?.nonce ?? 0) + 1 },
+      scrollTarget: {
+        page,
+        yPt,
+        exact,
+        nonce: (s.scrollTarget?.nonce ?? 0) + 1,
+      },
     })),
 
   openPath: async (path: string) => {
-    const previous = get().docId;
-    if (previous !== null) {
-      await closeDocument(previous).catch(() => undefined);
-    }
+    // The tab shell owns document lifecycle: opening here never closes the
+    // previously shown document — it may belong to another tab.
+    openNonce += 1;
+    const nonce = openNonce;
     set({
       docId: null,
       pages: [],
       previews: new Map(),
       error: null,
+      scale: DEFAULT_SCALE,
+      fitMode: null,
       rotationDoc: 0,
       rotationByPage: {},
       currentPage: 0,
+      scrollYPt: null,
       zoomAnchor: null,
+      scrollTarget: null,
     });
 
     let doc;
     try {
       doc = await openDocument(path);
     } catch (e: unknown) {
-      set({ error: describeOpenError(e) });
+      if (nonce === openNonce) set({ error: describeOpenError(e) });
+      return;
+    }
+    if (nonce !== openNonce) {
+      // Superseded while opening (tab switch); nobody owns this doc now.
+      await closeDocument(doc.docId).catch(() => undefined);
       return;
     }
     set({ docId: doc.docId, pages: doc.pages });
+    // Deliberately not awaited: openPath resolves on metadata so callers
+    // (tab open, session restore) aren't gated on a full preview pass.
+    void get().resumePreviews();
+  },
 
-    // Progressive pass: one low-res render per page, sequentially, so sharp
-    // viewport renders interleave into the engine queue between previews.
-    for (let i = 0; i < doc.pages.length; i++) {
-      if (get().docId !== doc.docId) return; // document was closed/replaced
-      const scale = PREVIEW_WIDTH_PX / doc.pages[i].width;
+  // Progressive pass: one low-res render per page, sequentially, so sharp
+  // viewport renders interleave into the engine queue between previews.
+  // Also re-run on tab activation to refill a pass that was cut short.
+  resumePreviews: async () => {
+    const nonce = openNonce;
+    const { docId, pages } = get();
+    if (docId === null) return;
+    for (let i = 0; i < pages.length; i++) {
+      if (nonce !== openNonce) return; // superseded by another open/hydrate
+      if (get().previews.has(i)) continue;
+      const scale = PREVIEW_WIDTH_PX / pages[i].width;
+      // Previews underlay the tiles, so they must match the tile theme.
+      const invert = useUiStore.getState().resolvedTheme === "dark";
       try {
-        const page = await renderPage(doc.docId, i, scale, nextRequestId());
+        const page = await renderPage(docId, i, scale, invert, nextRequestId());
         const bitmap = await createImageBitmap(
           new ImageData(page.data, page.width, page.height),
         );
-        if (get().docId !== doc.docId) return;
+        if (nonce !== openNonce) return;
         set((state) => {
           const previews = new Map(state.previews);
           previews.set(i, bitmap);
@@ -144,16 +201,21 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   },
 
   close: async () => {
+    openNonce += 1;
     const { docId } = get();
     set({
       docId: null,
       pages: [],
       previews: new Map(),
       error: null,
+      scale: DEFAULT_SCALE,
+      fitMode: null,
       rotationDoc: 0,
       rotationByPage: {},
       currentPage: 0,
+      scrollYPt: null,
       zoomAnchor: null,
+      scrollTarget: null,
     });
     if (docId !== null) {
       await closeDocument(docId).catch(() => undefined);
