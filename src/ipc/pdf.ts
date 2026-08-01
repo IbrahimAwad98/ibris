@@ -1,6 +1,7 @@
 // The only module allowed to call invoke(). Components and stores go
 // through these typed wrappers exclusively.
 import { invoke } from "@tauri-apps/api/core";
+import type { Annotation } from "../lib/annotations";
 
 export interface PageSizePt {
   width: number;
@@ -11,6 +12,9 @@ export interface OpenedDocument {
   docId: number;
   pageCount: number;
   pages: PageSizePt[];
+  /** Our own saved annotations, recovered from the file and suppressed in
+   * the viewing document so they render via the SVG overlay instead. */
+  annotations: Annotation[];
 }
 
 export type PdfError =
@@ -182,16 +186,47 @@ export async function setActiveDocument(docId: number | null): Promise<void> {
   await invoke("set_active_document", { docId });
 }
 
+/** A page pulled from another file, referenced by negative `order`
+ * entries: order value -(k+1) means inserts[k]. */
+export interface InsertSource {
+  path: string;
+  pageIndex: number;
+}
+
 /**
- * Applies annotations to the file at `path` and rewrites it in place.
- * `ourIds` are every /NM id the app has written for this document —
- * they are deleted before writing, making saves idempotent.
- * The wire shape of an annotation matches `Annotation` in lib/annotations.
+ * Applies page structure and annotations to the file at `srcPath`, writing
+ * the result to `destPath` (same path = in-place save; a subset order and
+ * a different path = extraction). `order` is the final page sequence as
+ * source indexes — negative entries reference `inserts` (pages imported
+ * from other files); `rotations` are extra clockwise degrees per source
+ * page. `ourIds` are every /NM id the app has written for this document —
+ * they are deleted before writing, making saves idempotent. The wire
+ * shape of an annotation matches `Annotation` in lib/annotations.
  */
-export async function saveAnnotated(
-  path: string,
+export async function saveDocument(
+  srcPath: string,
+  destPath: string,
+  order: number[],
+  rotations: [number, number][],
   annotations: unknown[],
   ourIds: string[],
+  inserts: InsertSource[] = [],
 ): Promise<void> {
-  await invoke("save_annotated", { path, annotations, ourIds });
+  await invoke("save_document", {
+    srcPath,
+    destPath,
+    order,
+    rotations,
+    annotations,
+    ourIds,
+    inserts,
+  });
+}
+
+/** Concatenates whole files into a new document at `destPath`. */
+export async function mergeDocuments(
+  paths: string[],
+  destPath: string,
+): Promise<void> {
+  await invoke("merge_documents", { paths, destPath });
 }

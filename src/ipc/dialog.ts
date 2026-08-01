@@ -11,6 +11,16 @@ export async function pickPdf(): Promise<string | null> {
   return typeof picked === "string" ? picked : null;
 }
 
+/** Native multi-file picker filtered to PDFs; empty when cancelled. */
+export async function pickPdfs(): Promise<string[]> {
+  const picked = await open({
+    multiple: true,
+    filters: [{ name: "PDF documents", extensions: ["pdf"] }],
+  });
+  if (Array.isArray(picked)) return picked;
+  return typeof picked === "string" ? [picked] : [];
+}
+
 /** Native save-as picker; null when the user cancels. */
 export async function pickSavePath(
   defaultPath?: string,

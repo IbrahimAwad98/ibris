@@ -133,14 +133,41 @@ pub async fn get_outline(
 }
 
 #[tauri::command]
-pub async fn save_annotated(
+#[allow(clippy::too_many_arguments)] // mirrors the wire format
+pub async fn save_document(
     state: State<'_, PdfService>,
-    path: String,
+    src_path: String,
+    dest_path: String,
+    order: Vec<i32>,
+    inserts: Vec<crate::pdf::save::InsertSource>,
+    rotations: Vec<(u16, u16)>,
     annotations: Vec<crate::pdf::annot::AnnotationData>,
     our_ids: Vec<String>,
 ) -> Result<(), PdfError> {
     state
-        .save_annotated(PathBuf::from(path), annotations, our_ids)
+        .save_document(
+            PathBuf::from(src_path),
+            PathBuf::from(dest_path),
+            order,
+            inserts,
+            rotations,
+            annotations,
+            our_ids,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn merge_documents(
+    state: State<'_, PdfService>,
+    paths: Vec<String>,
+    dest_path: String,
+) -> Result<(), PdfError> {
+    state
+        .merge_documents(
+            paths.into_iter().map(PathBuf::from).collect(),
+            PathBuf::from(dest_path),
+        )
         .await
 }
 

@@ -1,11 +1,17 @@
 // The crash-recovery sidecar format (M2-PLAN §2). Pure: IO lives in
 // src/ipc/sidecar.ts, wiring in the stores.
 import type { Annotation, AnnotationId } from "./annotations";
-import type { CommandRecord } from "../state/document-store";
+import type { CommandRecord, InsertedPage } from "../state/document-store";
 import type { FileFingerprint } from "../ipc/sidecar";
 
 export interface SidecarState {
   annotations: Record<AnnotationId, Annotation>;
+  /** View slot → source page; null only for never-initialised state. */
+  pageOrder: number[] | null;
+  rotations: Record<number, 0 | 90 | 180 | 270>;
+  /** Pages inserted from other files (negative pageOrder refs). Absent
+   * in pre-M3 sidecars; defaulted to empty on parse. */
+  inserts: InsertedPage[];
   commands: CommandRecord[];
   cursor: number;
   savedCursor: number;
@@ -59,12 +65,18 @@ export function parseSidecar(
     !Array.isArray(file.commands) ||
     typeof file.cursor !== "number" ||
     typeof file.savedCursor !== "number" ||
-    !Array.isArray(file.savedIds)
+    !Array.isArray(file.savedIds) ||
+    !Array.isArray(file.pageOrder) ||
+    typeof file.rotations !== "object" ||
+    file.rotations === null
   ) {
     return null;
   }
   return {
     annotations: file.annotations,
+    pageOrder: file.pageOrder,
+    rotations: file.rotations,
+    inserts: Array.isArray(file.inserts) ? file.inserts : [],
     commands: file.commands,
     cursor: file.cursor,
     savedCursor: file.savedCursor,

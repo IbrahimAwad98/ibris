@@ -46,6 +46,7 @@ beforeEach(() => {
     docId: nextDocId++,
     pageCount: 3,
     pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
+    annotations: [],
   }));
   useTabsStore.setState({
     tabs: [],
@@ -62,11 +63,10 @@ beforeEach(() => {
     scale: DEFAULT_SCALE,
     fitMode: null,
     zoomAnchor: null,
-    rotationDoc: 0,
-    rotationByPage: {},
     currentPage: 0,
     scrollTarget: null,
   });
+  useDocumentStore.getState().reset();
   useSearchStore.setState({
     query: "",
     results: [],
@@ -127,12 +127,13 @@ describe("per-tab state", () => {
 
     await useTabsStore.getState().openTab("C:\\docs\\b.pdf");
     expect(useViewerStore.getState().scale).toBe(DEFAULT_SCALE);
-    expect(useViewerStore.getState().rotationDoc).toBe(0);
+    // Rotation is a document edit now — the fresh tab has none.
+    expect(useDocumentStore.getState().rotations).toEqual({});
     expect(useSearchStore.getState().query).toBe("");
 
     useTabsStore.getState().activateTab(tabIds()[0]);
     expect(useViewerStore.getState().scale).toBe(2.5);
-    expect(useViewerStore.getState().rotationDoc).toBe(90);
+    expect(useDocumentStore.getState().rotations).toEqual({ 0: 90, 1: 90, 2: 90 });
     expect(useSearchStore.getState().query).toBe("alpha");
     expect(useUiStore.getState().sidebarOpen).toBe(true);
     expect(useUiStore.getState().sidebarTab).toBe("search");
@@ -232,6 +233,7 @@ describe("session restore", () => {
         docId: nextDocId++,
         pageCount: 3,
         pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
+        annotations: [],
       };
     });
     useTabsStore.setState({
@@ -245,8 +247,6 @@ describe("session restore", () => {
         "C:\\docs\\a.pdf": {
           scale: 3,
           fitMode: null,
-          rotationDoc: 90,
-          rotationByPage: {},
           page: 1,
           yPt: 50,
           sidebarOpen: true,
@@ -271,7 +271,6 @@ describe("session restore", () => {
     expect(s.activeTabId).toBe(s.tabs[0].id);
     // ...whose saved view state came back with it.
     expect(useViewerStore.getState().scale).toBe(3);
-    expect(useViewerStore.getState().rotationDoc).toBe(90);
     expect(useUiStore.getState().sidebarTab).toBe("outline");
     const missingRecent = s.recents.find((r) => r.path.includes("gone"));
     expect(missingRecent?.missing).toBe(true);
@@ -317,16 +316,16 @@ describe("debounced view persistence", () => {
     }
   });
 
-  it("persists zoom and rotation changes the same way", async () => {
+  it("persists zoom changes the same way", async () => {
+    // Rotation is a document edit since M3 and travels via the command
+    // stack + sidecar, not the view state.
     await useTabsStore.getState().openTab("C:\\docs\\a.pdf");
     vi.useFakeTimers();
     try {
       useViewerStore.getState().setScale(2.75);
-      useViewerStore.getState().rotateDoc();
       vi.advanceTimersByTime(600);
       const view = useTabsStore.getState().viewByPath["C:\\docs\\a.pdf"];
       expect(view?.scale).toBe(2.75);
-      expect(view?.rotationDoc).toBe(90);
     } finally {
       vi.useRealTimers();
     }
