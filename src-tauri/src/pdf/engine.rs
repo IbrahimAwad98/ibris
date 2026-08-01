@@ -124,6 +124,20 @@ pub enum EngineMsg {
         doc_id: u64,
         reply: oneshot::Sender<Result<Vec<OutlineNode>, PdfError>>,
     },
+    /// Applies annotations to the on-disk file and rewrites it (pdf/save.rs).
+    /// Works on a fresh load of the file; the viewing document is untouched.
+    SaveAnnotated {
+        path: PathBuf,
+        annotations: Vec<super::annot::AnnotationData>,
+        our_ids: Vec<String>,
+        reply: oneshot::Sender<Result<(), PdfError>>,
+    },
+    /// Enumerates the annotations of the file at `path` (fresh raw load).
+    /// Verification/debug aid; the viewer renders annotations via bitmap.
+    ReadAnnotations {
+        path: PathBuf,
+        reply: oneshot::Sender<Result<Vec<super::annot::ReadAnnotation>, PdfError>>,
+    },
     Close {
         doc_id: u64,
     },
@@ -134,7 +148,9 @@ impl EngineMsg {
     /// tied to an open document (`Open`), which are always user-initiated.
     fn doc_id(&self) -> Option<u64> {
         match self {
-            EngineMsg::Open { .. } => None,
+            EngineMsg::Open { .. }
+            | EngineMsg::SaveAnnotated { .. }
+            | EngineMsg::ReadAnnotations { .. } => None,
             EngineMsg::Render(r) => Some(r.doc_id),
             EngineMsg::RenderTile(r) => Some(r.doc_id),
             EngineMsg::ExtractText { doc_id, .. }
@@ -380,6 +396,43 @@ fn engine_main(queue: Arc<EngineQueue>) {
                     .map(outline_of);
                 let _ = reply.send(result);
             }
+            EngineMsg::SaveAnnotated {
+                path,
+                annotations,
+                our_ids,
+                reply,
+            } => {
+                // pdfium()? guarantees the bindings global is initialised
+                // before the raw-FFI save path reaches for it.
+                let result = pdfium().map(|_| ()).and_then(|()| {
+                    struct Access;
+                    impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+                    super::save::save_annotated(Access.bindings(), &path, &annotations, &our_ids)
+                });
+                let _ = reply.send(result);
+            }
+            EngineMsg::ReadAnnotations { path, reply } => {
+                let result = pdfium().map(|_| ()).and_then(|()| {
+                    struct Access;
+                    impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+                    let b = Access.bindings();
+                    let bytes = std::fs::read(&path).map_err(|e| PdfError::Io {
+                        detail: format!("reading {}: {e}", path.display()),
+                    })?;
+                    unsafe {
+                        let doc = b.FPDF_LoadMemDocument64(&bytes, None);
+                        if doc.is_null() {
+                            return Err(PdfError::Corrupt {
+                                detail: "file could not be parsed".into(),
+                            });
+                        }
+                        let annots = super::annot::read_annotations(b, doc);
+                        b.FPDF_CloseDocument(doc);
+                        Ok(annots)
+                    }
+                });
+                let _ = reply.send(result);
+            }
             EngineMsg::Close { doc_id } => {
                 docs.remove(&doc_id);
             }
@@ -435,7 +488,13 @@ fn open_one(
             path: path.display().to_string(),
         });
     }
-    let document = pdfium()?.load_pdf_from_file(path, None)?;
+    // Loaded from bytes, not by path: PDFium's file loader keeps an OS
+    // handle open, which on Windows would block the save pipeline's atomic
+    // rename over the file while it is being viewed.
+    let bytes = std::fs::read(path).map_err(|e| PdfError::Io {
+        detail: format!("reading {}: {e}", path.display()),
+    })?;
+    let document = pdfium()?.load_pdf_from_byte_vec(bytes, None)?;
 
     let pages: Vec<PageSizePt> = document
         .pages()

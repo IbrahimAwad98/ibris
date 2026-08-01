@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ClosePrompt } from "./features/shell/ClosePrompt";
 import { CommandPalette } from "./features/shell/CommandPalette";
 import { handleShortcut } from "./features/shell/commands";
 import { TabBar } from "./features/shell/TabBar";
@@ -37,8 +38,17 @@ function App() {
   }, []);
 
   // The one keyboard dispatcher, driven entirely by the command registry.
+  // Inside text fields, only Ctrl chords fire, and the editing chords
+  // (undo/cut/copy/paste/select-all) stay native to the field.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => void handleShortcut(e);
+    const FIELD_CHORDS = ["z", "y", "x", "c", "v", "a"];
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest("input, textarea, [contenteditable=true]")) {
+        if (!e.ctrlKey || FIELD_CHORDS.includes(e.key.toLowerCase())) return;
+      }
+      void handleShortcut(e);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -59,6 +69,7 @@ function App() {
         <PdfViewer />
       </div>
       <CommandPalette />
+      <ClosePrompt />
     </div>
   );
 }

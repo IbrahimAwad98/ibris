@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getOutline, type OutlineNode } from "../../ipc/pdf";
+import { HistoryPanel } from "../annotations/HistoryPanel";
 import { navigateToMatch, useSearchStore } from "../../state/search-store";
 import { useUiStore, type SidebarTab } from "../../state/ui-store";
 import { useViewerStore } from "../../state/viewer-store";
@@ -54,6 +55,7 @@ export function Sidebar() {
       ? [{ id: "outline" as SidebarTab, label: "Outline" }]
       : []),
     { id: "search", label: "Search" },
+    { id: "history", label: "History" },
   ];
 
   return (
@@ -98,6 +100,7 @@ export function Sidebar() {
         {tab === "thumbnails" && <ThumbnailList />}
         {tab === "outline" && <OutlineList nodes={outline} depth={0} />}
         {tab === "search" && <SearchPanel />}
+        {tab === "history" && <HistoryPanel />}
       </div>
       <div
         onMouseDown={onHandleDown}

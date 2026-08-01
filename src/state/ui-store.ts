@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type SidebarTab = "thumbnails" | "outline" | "search";
+export type SidebarTab = "thumbnails" | "outline" | "search" | "history";
 export type ThemePreference = "system" | "light" | "dark";
 
 /** What "system" currently means; defaults dark where matchMedia is absent. */
@@ -31,6 +31,9 @@ export interface UiState {
   paletteMode: "commands" | "goto" | null;
   openPalette: (mode: "commands" | "goto") => void;
   closePalette: () => void;
+  /** Tab id awaiting a save/discard/cancel decision before closing. */
+  closePrompt: string | null;
+  setClosePrompt: (tabId: string | null) => void;
   toggleSidebar: () => void;
   setSidebarTab: (tab: SidebarTab) => void;
   setSidebarWidth: (width: number) => void;
@@ -52,6 +55,8 @@ export const useUiStore = create<UiState>()(
       paletteMode: null,
       openPalette: (mode) => set({ paletteMode: mode }),
       closePalette: () => set({ paletteMode: null }),
+      closePrompt: null,
+      setClosePrompt: (closePrompt) => set({ closePrompt }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setSidebarTab: (tab) => set({ sidebarTab: tab }),
       setSidebarWidth: (width) =>
