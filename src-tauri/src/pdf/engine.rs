@@ -41,6 +41,8 @@ pub struct DocumentInfo {
     /// viewing document has them suppressed so the bitmap never
     /// double-renders against the SVG overlay.
     pub annotations: Vec<super::annot::AnnotationData>,
+    /// The document's interactive form, if any (M4).
+    pub form: super::form::FormInfo,
 }
 
 /// One rendered page: tightly packed RGBA8 pixels.
@@ -144,6 +146,10 @@ pub enum EngineMsg {
         rotations: Vec<(u16, u16)>,
         annotations: Vec<super::annot::AnnotationData>,
         our_ids: Vec<String>,
+        /// Form field values to fill (M4).
+        field_values: Vec<super::form::FieldWrite>,
+        /// Flatten annotations and fields into page content (M4).
+        flatten: bool,
         reply: oneshot::Sender<Result<(), PdfError>>,
     },
     /// Concatenates whole files into a new document.
@@ -425,6 +431,8 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 rotations,
                 annotations,
                 our_ids,
+                field_values,
+                flatten,
                 reply,
             } => {
                 // pdfium()? guarantees the bindings global is initialised
@@ -441,6 +449,8 @@ fn engine_main(queue: Arc<EngineQueue>) {
                         &rotations,
                         &annotations,
                         &our_ids,
+                        &field_values,
+                        flatten,
                     )
                 });
                 let _ = reply.send(result);
@@ -581,10 +591,12 @@ fn open_one(
             height: page.height().value,
         })
         .collect();
+    let form = super::form::read_form(&document);
     let info = DocumentInfo {
         page_count: pages.len() as u16,
         pages,
         annotations,
+        form,
     };
 
     let id = *next_id;
