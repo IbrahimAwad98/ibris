@@ -248,3 +248,66 @@ options are the three above.
    first, then UI.
 6. Undo history panel, dirty indicator, close prompt, tool settings
    persistence (`toolStore`, zustand persist).
+
+## 8. Reopen editability (closing the M2 read-only gap)
+
+M2 shipped with our own saved annotations going read-only after close/reopen
+(§6). This section closes that: an annotation we wrote must come back from
+disk selectable, movable, deletable, and undoable. Foreign annotations stay
+read-only.
+
+**Identity:** `/NM` is written as `ibris:<uuid>`. The prefix is the
+ownership marker — it survives every tool that preserves annotation
+identity at all, and it cannot false-positive on foreign annotations the
+way "looks like a UUID" can (Acrobat also writes GUID-shaped /NM values).
+
+**Fidelity:** each annotation also carries an `IbrisData` string key —
+the full wire-model JSON — in its dictionary. On open, a raw scan of the
+file collects every `ibris:`-prefixed annotation and rebuilds the model
+from `IbrisData` when present and parseable.
+
+**The failure question: what happens when `IbrisData` is gone but the
+annotations remain** (Acrobat re-saved the file, or another tool stripped
+private keys)?
+
+Answer: reconstruction, not read-only regression. Everything we write is
+also expressed in standard PDF keys — QuadPoints, InkList, /Rect,
+/Contents, /T, /CA, border width, /M — so for an `ibris:`-tagged
+annotation with no readable `IbrisData`, the model is rebuilt from the
+standard keys:
+
+| Subtype found | Rebuilt as | Loss |
+| --- | --- | --- |
+| Highlight/Underline/StrikeOut | same, quads from QuadPoints | none |
+| Text | note (rect origin + /Contents) | none |
+| Square / Circle | rect / ellipse (/Rect deflated by border) | fill colour is best-effort from /AP |
+| Ink, one 2-point stroke | line | an arrow degrades to a line (head lost on next edit) |
+| Ink, otherwise | ink from InkList | none |
+| Stamp | stamp (/Rect + /Name) | none |
+| anything else | left in place, read-only | — |
+
+Colour comes from `FPDFAnnot_GetColor` when it answers, else from the
+first colour operator in the /AP stream, else a neutral default. Dates
+parse from /M. An annotation whose reconstruction fails is *left in the
+viewing document* — it keeps rendering via the page bitmap exactly like a
+foreign annotation, visibly present, never silently dropped. The graceful
+degradation is: full fidelity → reconstructed (possibly arrow→line) →
+still visible but read-only. No path loses content.
+
+Reconstruction is the load-bearing mechanism; `IbrisData` is a fidelity
+upgrade on top of it, not a dependency — precisely because any other
+software can drop a private key.
+
+**Suppression:** after the raw scan, the safe viewing document deletes
+(in memory only — the disk file is untouched) every annotation whose
+`/NM` we successfully modelled, so the page bitmap never double-renders
+against the SVG overlay. The safe API exposes `name()` and
+`delete_annotation()` (verified in pdfium-render 0.9.3), so no raw-handle
+plumbing is needed.
+
+**Frontend seeding:** `open` returns the recovered annotations with
+`DocumentInfo`. Unless a sidecar restored crashed state, the document
+store seeds `annotations` and `savedIds` from them with an empty command
+stack (they are the saved state; the document opens clean). Save already
+unions `savedIds` into `ourIds`, so deleting a reopened annotation
+deletes it from disk on the next save.

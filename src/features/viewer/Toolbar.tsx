@@ -1,3 +1,4 @@
+import { useDocumentStore } from "../../state/document-store";
 import { useUiStore } from "../../state/ui-store";
 import { useViewerStore } from "../../state/viewer-store";
 import { fitTo, zoomInCentred, zoomOutCentred } from "./view-actions";
@@ -17,7 +18,9 @@ const btn: React.CSSProperties = {
 export function Toolbar() {
   const scale = useViewerStore((s) => s.scale);
   const currentPage = useViewerStore((s) => s.currentPage);
-  const pageCount = useViewerStore((s) => s.pages.length);
+  const sourceCount = useViewerStore((s) => s.pages.length);
+  const orderCount = useDocumentStore((s) => s.pageOrder?.length);
+  const pageCount = orderCount ?? sourceCount;
   const rotateDoc = useViewerStore((s) => s.rotateDoc);
   const rotatePage = useViewerStore((s) => s.rotatePage);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);

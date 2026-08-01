@@ -1,6 +1,11 @@
 // Store-driven view operations shared by the Toolbar and the command
 // registry, so both surfaces do exactly the same thing.
-import { PAGE_GAP, pageRotation, useViewerStore } from "../../state/viewer-store";
+import {
+  PAGE_GAP,
+  pageOrderOf,
+  pageRotation,
+  useViewerStore,
+} from "../../state/viewer-store";
 import { fitPageScale, fitWidthScale, zoomIn, zoomOut } from "../../lib/zoom";
 
 function viewerEl(): HTMLDivElement | null {
@@ -30,7 +35,7 @@ export function resetZoom(): void {
 export function fitTo(mode: "width" | "page"): void {
   const el = viewerEl();
   const s = useViewerStore.getState();
-  const pt = s.pages[s.currentPage];
+  const pt = s.pages[pageOrderOf(s)[s.currentPage]];
   if (!el || !pt) return;
   const rot = pageRotation(s, s.currentPage);
   const target =

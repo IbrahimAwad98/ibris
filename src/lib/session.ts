@@ -1,14 +1,13 @@
 // Pure session-restore planning; persistence wiring lives in tabs-store.
-import type { Rotation } from "./coords";
 import type { SidebarTab } from "../state/ui-store";
 import type { FitMode } from "../state/viewer-store";
 
-/** Everything needed to put a document back the way the user left it. */
+/** Everything needed to put a document back the way the user left it.
+ * Rotation is deliberately absent since M3: it is a document *edit*
+ * (command stack + sidecar), not view state. */
 export interface SavedView {
   scale: number;
   fitMode: FitMode;
-  rotationDoc: Rotation;
-  rotationByPage: Record<number, Rotation>;
   page: number;
   /** Display-space points below the top of `page`. */
   yPt: number;

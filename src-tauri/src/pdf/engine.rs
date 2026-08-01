@@ -36,6 +36,11 @@ pub struct PageSizePt {
 pub struct DocumentInfo {
     pub page_count: u16,
     pub pages: Vec<PageSizePt>,
+    /// Our own saved annotations, recovered from the file at open
+    /// (M2-PLAN §8). The frontend seeds its document store with these; the
+    /// viewing document has them suppressed so the bitmap never
+    /// double-renders against the SVG overlay.
+    pub annotations: Vec<super::annot::AnnotationData>,
 }
 
 /// One rendered page: tightly packed RGBA8 pixels.
@@ -124,12 +129,27 @@ pub enum EngineMsg {
         doc_id: u64,
         reply: oneshot::Sender<Result<Vec<OutlineNode>, PdfError>>,
     },
-    /// Applies annotations to the on-disk file and rewrites it (pdf/save.rs).
-    /// Works on a fresh load of the file; the viewing document is untouched.
-    SaveAnnotated {
-        path: PathBuf,
+    /// Applies structure + annotations to the file at `src_path` and writes
+    /// the result to `dest_path` (pdf/save.rs). Works on a fresh load; the
+    /// viewing document is untouched.
+    SaveDocument {
+        src_path: PathBuf,
+        dest_path: PathBuf,
+        /// Final page sequence as source indexes; omissions are deletions;
+        /// negative entries reference `inserts` (order -(k+1) = inserts[k]).
+        order: Vec<i32>,
+        /// Pages imported from other files.
+        inserts: Vec<super::save::InsertSource>,
+        /// Extra clockwise rotation in degrees per source page.
+        rotations: Vec<(u16, u16)>,
         annotations: Vec<super::annot::AnnotationData>,
         our_ids: Vec<String>,
+        reply: oneshot::Sender<Result<(), PdfError>>,
+    },
+    /// Concatenates whole files into a new document.
+    MergeDocuments {
+        paths: Vec<PathBuf>,
+        dest_path: PathBuf,
         reply: oneshot::Sender<Result<(), PdfError>>,
     },
     /// Enumerates the annotations of the file at `path` (fresh raw load).
@@ -149,7 +169,8 @@ impl EngineMsg {
     fn doc_id(&self) -> Option<u64> {
         match self {
             EngineMsg::Open { .. }
-            | EngineMsg::SaveAnnotated { .. }
+            | EngineMsg::SaveDocument { .. }
+            | EngineMsg::MergeDocuments { .. }
             | EngineMsg::ReadAnnotations { .. } => None,
             EngineMsg::Render(r) => Some(r.doc_id),
             EngineMsg::RenderTile(r) => Some(r.doc_id),
@@ -396,8 +417,12 @@ fn engine_main(queue: Arc<EngineQueue>) {
                     .map(outline_of);
                 let _ = reply.send(result);
             }
-            EngineMsg::SaveAnnotated {
-                path,
+            EngineMsg::SaveDocument {
+                src_path,
+                dest_path,
+                order,
+                inserts,
+                rotations,
                 annotations,
                 our_ids,
                 reply,
@@ -407,7 +432,28 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 let result = pdfium().map(|_| ()).and_then(|()| {
                     struct Access;
                     impl PdfiumLibraryBindingsAccessor<'static> for Access {}
-                    super::save::save_annotated(Access.bindings(), &path, &annotations, &our_ids)
+                    super::save::save_document(
+                        Access.bindings(),
+                        &src_path,
+                        &dest_path,
+                        &order,
+                        &inserts,
+                        &rotations,
+                        &annotations,
+                        &our_ids,
+                    )
+                });
+                let _ = reply.send(result);
+            }
+            EngineMsg::MergeDocuments {
+                paths,
+                dest_path,
+                reply,
+            } => {
+                let result = pdfium().map(|_| ()).and_then(|()| {
+                    struct Access;
+                    impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+                    super::save::merge_documents(Access.bindings(), &paths, &dest_path)
                 });
                 let _ = reply.send(result);
             }
@@ -494,7 +540,38 @@ fn open_one(
     let bytes = std::fs::read(path).map_err(|e| PdfError::Io {
         detail: format!("reading {}: {e}", path.display()),
     })?;
-    let document = pdfium()?.load_pdf_from_byte_vec(bytes, None)?;
+
+    // Recover our own saved annotations (raw scan of a throwaway load)
+    // before the viewing document exists. Failures here must not block
+    // opening — a corrupt-but-parseable file still opens read-only.
+    let recovered = {
+        struct Access;
+        impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+        let b = pdfium().map(|_| Access.bindings())?;
+        unsafe {
+            let raw = b.FPDF_LoadMemDocument64(&bytes, None);
+            if raw.is_null() {
+                None
+            } else {
+                let r = super::annot::read_ibris_annotations(b, raw);
+                b.FPDF_CloseDocument(raw);
+                Some(r)
+            }
+        }
+    };
+
+    let mut document = pdfium()?.load_pdf_from_byte_vec(bytes, None)?;
+
+    // Suppress the recovered annotations in the viewing document (memory
+    // only — the disk file is untouched): they now live in the frontend
+    // model and render through the SVG overlay.
+    let annotations = match recovered {
+        Some(r) => {
+            suppress_annotations(&mut document, &r.suppress_names);
+            r.annotations
+        }
+        None => Vec::new(),
+    };
 
     let pages: Vec<PageSizePt> = document
         .pages()
@@ -507,12 +584,42 @@ fn open_one(
     let info = DocumentInfo {
         page_count: pages.len() as u16,
         pages,
+        annotations,
     };
 
     let id = *next_id;
     *next_id += 1;
     docs.insert(id, document);
     Ok((id, info))
+}
+
+/// Deletes every annotation whose /NM is in `names` from the in-memory
+/// viewing document. Never touches disk; best-effort — an annotation that
+/// refuses deletion just keeps rendering via the bitmap (read-only), which
+/// is the graceful degradation M2-PLAN §8 specifies.
+fn suppress_annotations(document: &mut PdfDocument<'_>, names: &[String]) {
+    if names.is_empty() {
+        return;
+    }
+    let count = document.pages().len();
+    for page_index in 0..count {
+        let Ok(mut page) = document.pages().get(page_index) else {
+            continue;
+        };
+        loop {
+            // Through annotations_mut() so the fetched annotation borrows
+            // the page's true lifetime, not this statement's.
+            let annots = page.annotations_mut();
+            let target = annots
+                .iter()
+                .position(|a| a.name().is_some_and(|n| names.contains(&n)));
+            let Some(at) = target else { break };
+            let Ok(annot) = annots.get(at) else { break };
+            if annots.delete_annotation(annot).is_err() {
+                break;
+            }
+        }
+    }
 }
 
 /// Renders one tile of a page: the region `rect` of the page as it would
