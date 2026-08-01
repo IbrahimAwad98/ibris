@@ -8,6 +8,34 @@ export interface PageSizePt {
   height: number;
 }
 
+/** One interactive widget; radio groups yield one entry per button. */
+export interface FormFieldInfo {
+  name: string;
+  kind: "text" | "checkbox" | "radio" | "combo" | "list" | "other";
+  pageIndex: number;
+  /** Top-left origin, page points relative to the visible box. */
+  rect: { x: number; y: number; width: number; height: number };
+  value: string;
+  checked: boolean;
+  options: string[];
+  /** Position within the same-named group (radio kids). */
+  kid: number;
+  multiline: boolean;
+  readOnly: boolean;
+}
+
+export interface FormInfo {
+  formType: "none" | "acroform" | "xfa";
+  fields: FormFieldInfo[];
+}
+
+/** A field value to write at save; mirrors Rust FieldWrite. */
+export type FieldWrite =
+  | { kind: "text"; name: string; value: string }
+  | { kind: "checkbox"; name: string; checked: boolean }
+  | { kind: "radio"; name: string; kid: number }
+  | { kind: "choice"; name: string; indices: number[] };
+
 export interface OpenedDocument {
   docId: number;
   pageCount: number;
@@ -15,6 +43,8 @@ export interface OpenedDocument {
   /** Our own saved annotations, recovered from the file and suppressed in
    * the viewing document so they render via the SVG overlay instead. */
   annotations: Annotation[];
+  /** The document's interactive form, if any. */
+  form: FormInfo;
 }
 
 export type PdfError =
@@ -211,6 +241,8 @@ export async function saveDocument(
   annotations: unknown[],
   ourIds: string[],
   inserts: InsertSource[] = [],
+  fieldValues: FieldWrite[] = [],
+  flatten = false,
 ): Promise<void> {
   await invoke("save_document", {
     srcPath,
@@ -220,6 +252,8 @@ export async function saveDocument(
     annotations,
     ourIds,
     inserts,
+    fieldValues,
+    flatten,
   });
 }
 
