@@ -304,3 +304,36 @@ at the bottom. Branch per milestone; nothing pushed.
   ceilings. Gate green: cargo 13 suites, npm 120, both full.
   UNTESTED by hand (no synthetic input): actual typing into overlay
   fields in the running app — on the manual checklist.
+
+- **2026-08-01 23:55** — Mid-session instruction executed: all four
+  branches merged to main via PRs #1-#4 (merge commits, no squash, no
+  rebase). Pre-check confirmed they were perfectly stacked (17 within 24
+  within 33 within 35 commits), so in-order merging needed no history
+  surgery. Full gate ran green on every branch before its merge and
+  once more on main (npm 120, cargo 13 suites, clippy/fmt/deny/lint/
+  typecheck, plus a production vite build). App-runs proof: npm run dev
+  on main, window came up, screenshot saved to
+  screenshots/main-post-merge.png (untracked) — it shows the restored
+  session tab with reopened annotations rendering through the editable
+  overlay and the active tool correctly reading Select on launch, live
+  confirmation of both the M2-gap fix and the Underline fix. Remote
+  branches deleted by the merges. Continuing M4 signature placement on
+  feat/m4-signatures.
+
+- **2026-08-02 00:30** - **M4 COMPLETE** (signature placement landed on
+  feat/m4-signatures; the forms half merged to main in PR #4).
+  Signature = picture, never "signing" (DECISIONS 017): ink tool for
+  drawn, PNG-from-file for image - a /Stamp whose appearance is an
+  appended image object (FPDFImageObj_SetBitmap + FPDFAnnot_AppendObject,
+  PDFium builds the /AP; we never also SetAP). Palette commands "Place
+  signature image..." (places centered on current page, natural aspect,
+  becomes a normal movable/deletable/undoable annotation) and "Draw
+  signature (ink)". image crate promoted dev->real dependency (png
+  feature only; licence gate unchanged); base64 hand-rolled both sides
+  rather than a new dependency. Engine test proves: verbatim data-URL
+  round-trip, suppression in the viewing document, and - after
+  byte-stripping IbrisData - not recovered but still DRAWN from the /AP
+  (visible read-only, per the 015 ladder). Gate green both sides
+  (cargo 14 suites, npm 120, clippy/fmt/deny/lint/typecheck, pipefail).
+  Manual checklist: transparency edge rendering in Acrobat/Edge,
+  overlay field typing, signature drag placement by hand.
