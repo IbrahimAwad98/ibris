@@ -195,3 +195,13 @@ at the bottom. Branch per milestone; nothing pushed.
   on launch where "Select" was expected; needs a manual look (state is
   correct in tests; may have been stray hover/persisted dev state).
   Starting M3 on feat/m3-page-operations.
+
+- **2026-08-01 21:35** — Session resumed per the a30a6ac handoff. Base
+  verified green both sides (cargo test 37, npm test 110, clippy, fmt,
+  deny, lint, typecheck). Owed DECISIONS.md entries written (012
+  open-from-bytes, 013 raw-FFI save pipeline, 014 structural-save
+  rebase) and M2-PLAN §8 added: reopen editability via /NM prefix
+  `ibris:` + IbrisData JSON key, with reconstruction from standard PDF
+  keys as the load-bearing fallback when other software strips private
+  keys — never a silent read-only regression (commit 4d97353). Now
+  implementing.
