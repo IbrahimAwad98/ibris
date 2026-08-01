@@ -15,6 +15,7 @@ import {
   insertPages,
   insertRef,
   removeAnnotation,
+  setFlattenForms,
   useDocumentStore,
 } from "../../state/document-store";
 import { useTabsStore } from "../../state/tabs-store";
@@ -120,6 +121,22 @@ export function appCommands(): AppCommand[] {
         const a = useDocumentStore.getState().annotations[selectedId];
         if (a) useDocumentStore.getState().execute(removeAnnotation(a));
         setSelectedId(null);
+      },
+    },
+    {
+      id: "flatten-forms",
+      label:
+        useDocumentStore.getState().flattenForms
+          ? "Cancel flatten at save"
+          : "Flatten form and annotations at save…",
+      enabled: () =>
+        docOpen() &&
+        (useViewerStore.getState().docForm.fields.length > 0 ||
+          Object.keys(useDocumentStore.getState().annotations).length > 0 ||
+          useDocumentStore.getState().flattenForms),
+      run: () => {
+        const flat = useDocumentStore.getState().flattenForms;
+        useDocumentStore.getState().execute(setFlattenForms(flat, !flat));
       },
     },
     {

@@ -24,6 +24,8 @@ const state = {
   pageOrder: [0, 1, 2],
   rotations: {},
   inserts: [],
+  fieldValues: {},
+  flattenForms: false,
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -49,5 +51,20 @@ describe("sidecar round trip", () => {
     expect(parseSidecar(wire, fp)).toBeNull();
     expect(parseSidecar("not json {", fp)).toBeNull();
     expect(parseSidecar("{}", fp)).toBeNull();
+  });
+});
+
+describe("forward compatibility", () => {
+  it("parses a pre-M3/M4 sidecar without inserts or field keys", () => {
+    const wire = serializeSidecar(fp, state);
+    const legacy = JSON.parse(wire) as Record<string, unknown>;
+    delete legacy["inserts"];
+    delete legacy["fieldValues"];
+    delete legacy["flattenForms"];
+    const parsed = parseSidecar(JSON.stringify(legacy), fp);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.inserts).toEqual([]);
+    expect(parsed?.fieldValues).toEqual({});
+    expect(parsed?.flattenForms).toBe(false);
   });
 });

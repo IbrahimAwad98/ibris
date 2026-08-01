@@ -157,6 +157,8 @@ async fn every_annotation_type_round_trips() {
             vec![],
             annots.clone(),
             ids.clone(),
+            vec![],
+            false,
         )
         .await
         .expect("save failed");
@@ -241,6 +243,8 @@ async fn every_annotation_type_round_trips() {
             vec![],
             annots,
             ids,
+            vec![],
+            false,
         )
         .await
         .expect("second save failed");
@@ -277,6 +281,8 @@ async fn appearance_streams_actually_draw() {
             vec![],
             annots,
             vec!["id-rect-render".into()],
+            vec![],
+            false,
         )
         .await
         .expect("save failed");

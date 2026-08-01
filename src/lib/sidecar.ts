@@ -1,7 +1,11 @@
 // The crash-recovery sidecar format (M2-PLAN §2). Pure: IO lives in
 // src/ipc/sidecar.ts, wiring in the stores.
 import type { Annotation, AnnotationId } from "./annotations";
-import type { CommandRecord, InsertedPage } from "../state/document-store";
+import type {
+  CommandRecord,
+  FieldState,
+  InsertedPage,
+} from "../state/document-store";
 import type { FileFingerprint } from "../ipc/sidecar";
 
 export interface SidecarState {
@@ -12,6 +16,10 @@ export interface SidecarState {
   /** Pages inserted from other files (negative pageOrder refs). Absent
    * in pre-M3 sidecars; defaulted to empty on parse. */
   inserts: InsertedPage[];
+  /** Edited form fields by name (M4); defaulted to empty on parse. */
+  fieldValues: Record<string, FieldState>;
+  /** Flatten-at-save flag (M4); defaulted to false on parse. */
+  flattenForms: boolean;
   commands: CommandRecord[];
   cursor: number;
   savedCursor: number;
@@ -77,6 +85,11 @@ export function parseSidecar(
     pageOrder: file.pageOrder,
     rotations: file.rotations,
     inserts: Array.isArray(file.inserts) ? file.inserts : [],
+    fieldValues:
+      typeof file.fieldValues === "object" && file.fieldValues !== null
+        ? file.fieldValues
+        : {},
+    flattenForms: file.flattenForms === true,
     commands: file.commands,
     cursor: file.cursor,
     savedCursor: file.savedCursor,
