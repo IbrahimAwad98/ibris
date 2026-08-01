@@ -377,3 +377,35 @@ key is not honoured), and cannot cross unmounted virtualised pages.
 each field costs a focus/commit round trip at save (irrelevant at
 human form sizes). XFA is detected and declared unsupported rather
 than approximated.
+
+---
+
+## 017 — Signature placement is graphical, never cryptographic
+
+**Decided:** Ibris places signatures as pictures: freehand ink (the
+existing ink tool) or a user-picked PNG embedded as a /Stamp annotation
+whose appearance is an appended image object. No UI text, command
+label, or document ever uses the word "sign" for this; the command is
+"Place signature image". Ibris makes no claim of authenticity,
+integrity, or legal validity — a placed signature is exactly as binding
+as a photocopied one.
+
+**Alternatives:** Real digital signatures (PKCS#7/PAdES) — out of scope
+by roadmap (ARCHITECTURE.md defers signature *validation*, and signing
+requires certificate handling, trust stores, and an incremental-save
+path that decision 013 does not have). Pretending: shipping placement
+under signing language — worse than nothing, since it teaches users a
+picture is a signature.
+
+**Implementation notes:** PNG only (the `image` crate is built with
+just the png feature — promoted from dev-dependency; licence gate
+unchanged). Pixels go through `FPDFImageObj_SetBitmap` +
+`FPDFAnnot_AppendObject`, so PDFium generates the /AP form; we never
+also SetAP (it would replace the image). An image stamp whose IbrisData
+key was stripped is left visible but read-only — its pixels live only
+in the /AP, so there is no model to reconstruct (degradation ladder of
+decision 015).
+
+**Cost:** The data URL rides the model and sidecar (tens of KB per
+signature). Transparency edge cases (straight vs premultiplied alpha)
+are untested against third-party readers — manual checklist.

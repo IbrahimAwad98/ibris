@@ -22,6 +22,7 @@ pub fn run() {
             commands::pdf::merge_documents,
             commands::pdf::close_document,
             commands::pdf::set_active_document,
+            commands::fs::read_file_bytes,
             commands::sidecar::file_fingerprint,
             commands::sidecar::sidecar_read,
             commands::sidecar::sidecar_write,
