@@ -2,9 +2,15 @@
 // shortcut live here and nowhere else: the palette renders this list and
 // the global keydown handler dispatches from it, so the two can never
 // disagree. Do not bind a shortcut anywhere else.
-import { pickPdf, pickSavePath } from "../../ipc/dialog";
+import { pickPdf, pickPdfs, pickSavePath } from "../../ipc/dialog";
+import { mergeDocuments } from "../../ipc/pdf";
+import { siblingPartPath } from "../../lib/page-ops";
 import { eventMatches, parseShortcut } from "../../lib/shortcuts";
-import { saveDocument, saveToPath } from "../../state/annotation-io";
+import {
+  saveDocument,
+  saveSubset,
+  saveToPath,
+} from "../../state/annotation-io";
 import {
   removeAnnotation,
   useDocumentStore,
@@ -112,6 +118,65 @@ export function appCommands(): AppCommand[] {
         const a = useDocumentStore.getState().annotations[selectedId];
         if (a) useDocumentStore.getState().execute(removeAnnotation(a));
         setSelectedId(null);
+      },
+    },
+    {
+      id: "extract-page",
+      label: "Extract current page…",
+      enabled: docOpen,
+      run: () => {
+        const path = activePath();
+        if (!path) return;
+        const v = useViewerStore.getState();
+        const slot = v.currentPage;
+        void pickSavePath(
+          path.replace(/\.pdf$/i, "") + ` - page ${slot + 1}.pdf`,
+        ).then(async (target) => {
+          if (!target) return;
+          await saveSubset(path, target, [slot]);
+          void useTabsStore.getState().openTab(target);
+        });
+      },
+    },
+    {
+      id: "split-doc",
+      label: "Split at current page…",
+      // Splitting before the first page would leave an empty first part.
+      enabled: () => docOpen() && useViewerStore.getState().currentPage > 0,
+      run: () => {
+        const path = activePath();
+        if (!path) return;
+        const v = useViewerStore.getState();
+        const slotCount =
+          useDocumentStore.getState().pageOrder?.length ?? v.pages.length;
+        const at = v.currentPage;
+        void pickSavePath(
+          path.replace(/\.pdf$/i, "") + " - part 1.pdf",
+        ).then(async (first) => {
+          if (!first) return;
+          const second = siblingPartPath(first);
+          const range = (from: number, to: number) =>
+            Array.from({ length: to - from }, (_, i) => from + i);
+          await saveSubset(path, first, range(0, at));
+          await saveSubset(path, second, range(at, slotCount));
+          void useTabsStore.getState().openTab(first);
+          void useTabsStore.getState().openTab(second);
+        });
+      },
+    },
+    {
+      id: "merge-pdfs",
+      label: "Merge PDFs…",
+      run: () => {
+        void pickPdfs().then(async (paths) => {
+          if (paths.length < 2) return;
+          const target = await pickSavePath(
+            paths[0].replace(/\.pdf$/i, "") + " - merged.pdf",
+          );
+          if (!target) return;
+          await mergeDocuments(paths, target);
+          void useTabsStore.getState().openTab(target);
+        });
       },
     },
     {
