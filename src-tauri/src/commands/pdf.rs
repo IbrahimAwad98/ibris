@@ -33,9 +33,12 @@ pub async fn render_page(
     doc_id: u64,
     page_index: u16,
     scale: f32,
+    invert: bool,
     request_id: u64,
 ) -> Result<Response, PdfError> {
-    let page = state.render(doc_id, page_index, scale, request_id).await?;
+    let page = state
+        .render(doc_id, page_index, scale, invert, request_id)
+        .await?;
     let mut bytes = Vec::with_capacity(8 + page.rgba.len());
     bytes.extend_from_slice(&page.width.to_le_bytes());
     bytes.extend_from_slice(&page.height.to_le_bytes());
@@ -55,6 +58,7 @@ pub async fn render_tile(
     tile_y: i32,
     tile_width: i32,
     tile_height: i32,
+    invert: bool,
     request_id: u64,
 ) -> Result<Response, PdfError> {
     let rect = TileRect {
@@ -64,7 +68,7 @@ pub async fn render_tile(
         height: tile_height,
     };
     let page = state
-        .render_tile(doc_id, page_index, scale, rect, request_id)
+        .render_tile(doc_id, page_index, scale, rect, invert, request_id)
         .await?;
     let mut bytes = Vec::with_capacity(8 + page.rgba.len());
     bytes.extend_from_slice(&page.width.to_le_bytes());
@@ -131,4 +135,9 @@ pub async fn get_outline(
 #[tauri::command]
 pub async fn close_document(state: State<'_, PdfService>, doc_id: u64) -> Result<(), PdfError> {
     state.close(doc_id)
+}
+
+#[tauri::command]
+pub fn set_active_document(state: State<'_, PdfService>, doc_id: Option<u64>) {
+    state.set_active(doc_id);
 }

@@ -175,3 +175,54 @@ bug — every test passed while highlights were visibly wrong. The fixture set
 must always include a non-zero-origin document (`offset-mediabox.pdf`), and
 geometry features should test against it, not only against the plain
 fixtures.
+
+---
+
+## 010 — Engine priority queue: in-place scan, not extra channels
+
+**Decided:** The engine channel (decision 008's follow-up) is a
+`Mutex<VecDeque> + Condvar` queue. Dequeue picks the first *hot* message —
+one with no document (always user-initiated, e.g. `Open`) or belonging to
+the active document — falling back to FIFO. The frontend declares the
+visible document via `set_active_document`; `u64::MAX` is the "none"
+sentinel in an `AtomicU64`.
+
+**Alternatives:** Two `mpsc` channels (high/low); a `BinaryHeap` with
+priority stamps; re-sorting the queue on tab switch.
+
+**Why:** Two channels can't be blocked on simultaneously without polling.
+A heap needs tiebreak stamps to stay FIFO within a document, and priorities
+computed at enqueue time go stale the moment the user switches tabs — the
+scan reads the *current* active document at dequeue, so a tab switch
+instantly re-prioritises everything already queued.
+
+**Cost:** O(n) scan per dequeue, bounded by queue depth (a viewport of
+tiles plus a preview pass per tab). Background documents can be starved
+while the visible one has work — exactly the intended behaviour.
+
+---
+
+## 011 — Dark-mode pages: engine bitmap post-pass, not CSS
+
+**Decided:** Dark mode inverts the rendered page bitmap in Rust
+(`pdf/dark.rs`): RGB → HSL, lightness flipped, hue/saturation kept, and the
+device-pixel rects of embedded image objects skipped entirely. An `invert`
+flag rides every render/tile request; frontend tile-cache keys carry the
+bit, so a theme switch is just a cache miss.
+
+**Alternatives:** CSS `filter: invert(1)` on the canvas (turns photos into
+negatives, shifts every hue); CSS `invert(1) hue-rotate(180deg)` (repairs
+hue but still negates photos and washes out saturated colour); PDFium's
+`FPDF_RENDER_REVERSE_BYTE_ORDER`-style colour-scheme APIs (not exposed by
+pdfium-render, and forced-colour rendering loses colour semantics rather
+than flipping luminance).
+
+**Why:** Only a per-pixel pass can both preserve hue and leave photographs
+positive, and only the engine knows where image objects sit on the page.
+Cost lands off the UI thread, and the invert bit in the cache key means no
+special-case invalidation anywhere.
+
+**Cost:** Roughly doubles per-tile CPU in dark mode (HSL round trip per
+pixel) and re-renders everything on theme switch. Images nested inside Form
+XObjects are not detected and will be inverted — recurse into form objects
+if such a document shows up.

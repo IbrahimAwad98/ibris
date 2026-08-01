@@ -7,6 +7,7 @@ use pdf::service::PdfService;
 pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(PdfService::new())
         .invoke_handler(tauri::generate_handler![
             commands::pdf::open_document,
@@ -18,6 +19,7 @@ pub fn run() {
             commands::pdf::cancel_render,
             commands::pdf::cancel_renders,
             commands::pdf::close_document,
+            commands::pdf::set_active_document,
         ])
         .run(tauri::generate_context!());
 
