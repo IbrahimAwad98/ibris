@@ -133,6 +133,18 @@ pub async fn get_outline(
 }
 
 #[tauri::command]
+pub async fn save_annotated(
+    state: State<'_, PdfService>,
+    path: String,
+    annotations: Vec<crate::pdf::annot::AnnotationData>,
+    our_ids: Vec<String>,
+) -> Result<(), PdfError> {
+    state
+        .save_annotated(PathBuf::from(path), annotations, our_ids)
+        .await
+}
+
+#[tauri::command]
 pub async fn close_document(state: State<'_, PdfService>, doc_id: u64) -> Result<(), PdfError> {
     state.close(doc_id)
 }

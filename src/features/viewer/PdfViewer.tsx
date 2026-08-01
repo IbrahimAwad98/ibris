@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { AnnotationToolbar } from "../annotations/AnnotationToolbar";
+import { MarkupListener } from "../annotations/MarkupListener";
 import { EmptyState } from "../shell/EmptyState";
 import { useTabsStore } from "../../state/tabs-store";
 import { useUiStore } from "../../state/ui-store";
@@ -36,6 +38,8 @@ export function PdfViewer() {
     content = (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         <Toolbar />
+        <AnnotationToolbar />
+        <MarkupListener />
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {sidebarOpen && <Sidebar />}
           <div data-viewer-area style={{ position: "relative", flex: 1 }}>

@@ -2,9 +2,15 @@
 // shortcut live here and nowhere else: the palette renders this list and
 // the global keydown handler dispatches from it, so the two can never
 // disagree. Do not bind a shortcut anywhere else.
-import { pickPdf } from "../../ipc/dialog";
+import { pickPdf, pickSavePath } from "../../ipc/dialog";
 import { eventMatches, parseShortcut } from "../../lib/shortcuts";
+import { saveDocument, saveToPath } from "../../state/annotation-io";
+import {
+  removeAnnotation,
+  useDocumentStore,
+} from "../../state/document-store";
 import { useTabsStore } from "../../state/tabs-store";
+import { useToolStore } from "../../state/tool-store";
 import { useUiStore } from "../../state/ui-store";
 import { useViewerStore } from "../../state/viewer-store";
 import {
@@ -30,6 +36,11 @@ export interface AppCommand {
 const docOpen = () => useViewerStore.getState().docId !== null;
 const hasTabs = () => useTabsStore.getState().tabs.length > 0;
 
+function activePath(): string | null {
+  const { tabs, activeTabId } = useTabsStore.getState();
+  return tabs.find((t) => t.id === activeTabId)?.path ?? null;
+}
+
 /** The full registry, reading store state lazily at call time. */
 export function appCommands(): AppCommand[] {
   return [
@@ -49,7 +60,58 @@ export function appCommands(): AppCommand[] {
       enabled: hasTabs,
       run: () => {
         const s = useTabsStore.getState();
-        if (s.activeTabId !== null) void s.closeTab(s.activeTabId);
+        if (s.activeTabId !== null) s.requestCloseTab(s.activeTabId);
+      },
+    },
+    {
+      id: "save",
+      label: "Save",
+      shortcut: "Ctrl+S",
+      enabled: docOpen,
+      run: () => {
+        const path = activePath();
+        if (path) void saveDocument(path);
+      },
+    },
+    {
+      id: "save-as",
+      label: "Save as…",
+      shortcut: "Ctrl+Shift+S",
+      enabled: docOpen,
+      run: () => {
+        const path = activePath();
+        if (!path) return;
+        void pickSavePath(path).then((target) => {
+          if (target) void saveToPath(path, target);
+        });
+      },
+    },
+    {
+      id: "undo",
+      label: "Undo",
+      shortcut: "Ctrl+Z",
+      enabled: () => useDocumentStore.getState().canUndo(),
+      run: () => useDocumentStore.getState().undo(),
+    },
+    {
+      id: "redo",
+      label: "Redo",
+      shortcut: "Ctrl+Y",
+      extraShortcuts: ["Ctrl+Shift+Z"],
+      enabled: () => useDocumentStore.getState().canRedo(),
+      run: () => useDocumentStore.getState().redo(),
+    },
+    {
+      id: "delete-annotation",
+      label: "Delete selected annotation",
+      shortcut: "Delete",
+      enabled: () => useToolStore.getState().selectedId !== null,
+      run: () => {
+        const { selectedId, setSelectedId } = useToolStore.getState();
+        if (selectedId === null) return;
+        const a = useDocumentStore.getState().annotations[selectedId];
+        if (a) useDocumentStore.getState().execute(removeAnnotation(a));
+        setSelectedId(null);
       },
     },
     {
