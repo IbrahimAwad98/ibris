@@ -1582,6 +1582,7 @@ dependencies = [
 name = "ibris"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "image",
  "pdfium-render",
  "serde",

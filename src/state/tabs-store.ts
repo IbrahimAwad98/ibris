@@ -2,6 +2,17 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { closeDocument, setActiveDocument } from "../ipc/pdf";
 import {
+  cancelSidecarWrite,
+  flushSidecarWrite,
+  loadEditState,
+  scheduleSidecarWrite,
+} from "./annotation-io";
+import {
+  useDocumentStore,
+  type DocumentSnapshot,
+} from "./document-store";
+import type { FileFingerprint } from "../ipc/sidecar";
+import {
   planRestore,
   pushRecent,
   type RecentEntry,
@@ -44,6 +55,8 @@ interface TabSnapshot {
   viewer: ViewerSnapshot;
   search: SearchSnapshot;
   sidebar: { open: boolean; tab: SidebarTab };
+  document: DocumentSnapshot;
+  fingerprint: FileFingerprint | null;
 }
 
 // In-memory only: previews are ImageBitmaps, which cannot be serialised.
@@ -59,6 +72,11 @@ export interface TabsState {
   recents: RecentEntry[];
   /** Guards restoreSession against running twice (StrictMode, re-mounts). */
   restored: boolean;
+  /** Unsaved-changes flag per tab id; kept current by a store subscription.
+   * Session-local, never persisted. */
+  dirtyTabs: Record<string, boolean>;
+  /** Close with an unsaved-changes prompt when needed. */
+  requestCloseTab: (id: string) => void;
   /** Opens a path in a new tab, or activates the tab that already has it. */
   openTab: (path: string) => Promise<void>;
   activateTab: (id: string) => void;
@@ -103,6 +121,8 @@ function takeSnapshot(): TabSnapshot {
       currentIndex: s.currentIndex,
     },
     sidebar: { open: u.sidebarOpen, tab: u.sidebarTab },
+    document: useDocumentStore.getState().snapshot(),
+    fingerprint: useDocumentStore.getState().fingerprint,
   };
 }
 
@@ -127,6 +147,7 @@ function applySnapshot(snap: TabSnapshot): void {
     sidebarOpen: snap.sidebar.open,
     sidebarTab: snap.sidebar.tab,
   });
+  useDocumentStore.getState().restore(snap.document, snap.fingerprint);
   void setActiveDocument(snap.viewer.docId).catch(() => undefined);
   // Refill a preview pass that was cut short by switching away.
   void useViewerStore.getState().resumePreviews();
@@ -171,11 +192,16 @@ function applySavedView(view: SavedView): void {
 /** Opens `path` into the viewer, then flags it visible to the engine —
  * unless the user has already switched to another tab meanwhile. */
 async function openIntoViewer(tabId: string, path: string): Promise<void> {
+  useDocumentStore.getState().reset();
   await useViewerStore.getState().openPath(path);
   if (useTabsStore.getState().activeTabId === tabId) {
     void setActiveDocument(useViewerStore.getState().docId).catch(
       () => undefined,
     );
+    if (useViewerStore.getState().docId !== null) {
+      // Fingerprint + crash-recovery sidecar for the edit state.
+      await loadEditState(path);
+    }
   }
 }
 
@@ -187,6 +213,23 @@ export const useTabsStore = create<TabsState>()(
       viewByPath: {},
       recents: [],
       restored: false,
+      dirtyTabs: {},
+
+      requestCloseTab: (id) => {
+        const { dirtyTabs, activeTabId, activateTab, closeTab } = get();
+        const dirty =
+          id === activeTabId
+            ? useDocumentStore.getState().isDirty()
+            : (dirtyTabs[id] ?? false);
+        if (!dirty) {
+          void closeTab(id);
+          return;
+        }
+        // The prompt saves via the active document store, so the tab must
+        // be the active one before the modal opens.
+        if (id !== activeTabId) activateTab(id);
+        useUiStore.getState().setClosePrompt(id);
+      },
 
       openTab: async (path) => {
         const { tabs, activeTabId, activateTab, saveActiveView } = get();
@@ -196,6 +239,8 @@ export const useTabsStore = create<TabsState>()(
           return;
         }
         if (activeTabId !== null) {
+          const prev = tabs.find((t) => t.id === activeTabId);
+          if (prev) flushSidecarWrite(prev.path);
           saveActiveView();
           snapshots.set(activeTabId, takeSnapshot());
         }
@@ -228,6 +273,8 @@ export const useTabsStore = create<TabsState>()(
         const tab = tabs.find((t) => t.id === id);
         if (!tab || id === activeTabId) return;
         if (activeTabId !== null) {
+          const prev = tabs.find((t) => t.id === activeTabId);
+          if (prev) flushSidecarWrite(prev.path);
           saveActiveView();
           snapshots.set(activeTabId, takeSnapshot());
         }
@@ -260,9 +307,11 @@ export const useTabsStore = create<TabsState>()(
 
         saveActiveView(); // remember where the user was for next open
         snapshots.delete(id);
+        cancelSidecarWrite();
         const neighbour = remaining[Math.min(idx, remaining.length - 1)];
         if (!neighbour) {
           set({ tabs: [], activeTabId: null });
+          useDocumentStore.getState().reset();
           useSearchStore.getState().clear();
           void setActiveDocument(null).catch(() => undefined);
           await useViewerStore.getState().close(); // resets and closes the doc
@@ -401,6 +450,24 @@ useUiStore.subscribe((state, prev) => {
   }
   useViewerStore.setState({ previews: new Map() });
   void useViewerStore.getState().resumePreviews();
+});
+
+// Any command-stack change schedules a crash-recovery sidecar write for
+// the active tab's document (M2-PLAN §2) and keeps its dirty flag current.
+useDocumentStore.subscribe((state, prev) => {
+  const stackChanged =
+    state.commands !== prev.commands || state.cursor !== prev.cursor;
+  const dirtyChanged =
+    stackChanged || state.savedCursor !== prev.savedCursor;
+  if (!dirtyChanged) return;
+  const { tabs, activeTabId, dirtyTabs } = useTabsStore.getState();
+  const tab = tabs.find((t) => t.id === activeTabId);
+  if (!tab) return;
+  if (stackChanged) scheduleSidecarWrite(tab.path);
+  const dirty = state.cursor !== state.savedCursor;
+  if ((dirtyTabs[tab.id] ?? false) !== dirty) {
+    useTabsStore.setState({ dirtyTabs: { ...dirtyTabs, [tab.id]: dirty } });
+  }
 });
 
 const VIEW_SAVE_DEBOUNCE_MS = 500;

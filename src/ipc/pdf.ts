@@ -181,3 +181,17 @@ export async function closeDocument(docId: number): Promise<void> {
 export async function setActiveDocument(docId: number | null): Promise<void> {
   await invoke("set_active_document", { docId });
 }
+
+/**
+ * Applies annotations to the file at `path` and rewrites it in place.
+ * `ourIds` are every /NM id the app has written for this document —
+ * they are deleted before writing, making saves idempotent.
+ * The wire shape of an annotation matches `Annotation` in lib/annotations.
+ */
+export async function saveAnnotated(
+  path: string,
+  annotations: unknown[],
+  ourIds: string[],
+): Promise<void> {
+  await invoke("save_annotated", { path, annotations, ourIds });
+}
