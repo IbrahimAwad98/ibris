@@ -23,6 +23,27 @@ use serde::Deserialize;
 
 use super::annot::{write_annotations, AnnotationData};
 use super::error::PdfError;
+use super::form::FieldWrite;
+use super::redact::RedactRegion;
+
+/// Everything one save applies, mirroring the IPC wire format. Grew past
+/// ten positional arguments across M2-M5; a struct keeps call sites and
+/// future extensions sane.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SaveRequest {
+    /// Final page sequence as source indexes; omissions are deletions;
+    /// negative entries reference `inserts` (order -(k+1) = inserts[k]).
+    pub order: Vec<i32>,
+    pub inserts: Vec<InsertSource>,
+    /// Extra clockwise rotation in degrees per own source page.
+    pub rotations: Vec<(u16, u16)>,
+    pub annotations: Vec<AnnotationData>,
+    pub our_ids: Vec<String>,
+    pub field_values: Vec<FieldWrite>,
+    pub flatten: bool,
+    pub redactions: Vec<RedactRegion>,
+}
 
 /// A page pulled from another file (M3 insert-from-file). Referenced by
 /// negative `order` entries: order value -(k+1) means `inserts[k]`.
@@ -100,18 +121,19 @@ fn write_atomically(dest: &Path, bytes: &[u8]) -> Result<(), PdfError> {
 /// `rotations` (degrees, per own source page), and `annotations`
 /// (source-page-indexed) applied. `our_ids` are the /NM ids deleted
 /// before writing.
-#[allow(clippy::too_many_arguments)] // mirrors the wire format
+/// Saves the document at `src_path` to `dest_path` per `req` — see
+/// [`SaveRequest`]. Order of application: form values (source doc, so
+/// baked appearances travel through imports), then redaction (refusal
+/// scan, content removal, marker boxes), then annotations/structure/
+/// flatten, then serialisation, then — for redacted saves — a
+/// verification re-parse that must find the regions clean before the
+/// atomic rename happens. Fails with `Io`, `Corrupt`, `Unsupported`
+/// (redaction refusals), or `Internal`.
 pub fn save_document(
     b: &dyn PdfiumLibraryBindings,
     src_path: &Path,
     dest_path: &Path,
-    order: &[i32],
-    inserts: &[InsertSource],
-    rotations: &[(u16, u16)],
-    annotations: &[AnnotationData],
-    our_ids: &[String],
-    field_values: &[super::form::FieldWrite],
-    flatten: bool,
+    req: &SaveRequest,
 ) -> Result<(), PdfError> {
     let bytes = std::fs::read(src_path).map_err(|e| PdfError::Io {
         detail: format!("reading {} for save: {e}", src_path.display()),
@@ -124,27 +146,50 @@ pub fn save_document(
                 detail: "the on-disk file could no longer be parsed".into(),
             });
         }
-        // Form values go onto the source document first, before any page
-        // import: baked /V + regenerated appearances travel with pages,
-        // whereas the catalog's /AcroForm registration does not survive
-        // FPDF_ImportPagesByIndex (fields on restructured saves keep
-        // their looks but lose interactivity — decision 016).
-        let result = super::form::apply_form_values(b, src, field_values).and_then(|()| {
+        let result = (|| {
+            // Form values first: the catalog /AcroForm registration does
+            // not survive FPDF_ImportPagesByIndex, so values must be
+            // baked into the source pages (decision 016).
+            super::form::apply_form_values(b, src, &req.field_values)?;
+            if !req.redactions.is_empty() {
+                let tokens = super::redact::collect_region_text(b, src, &req.redactions)?;
+                super::redact::refuse_if_unscrubbable(b, src, &req.redactions, &tokens)?;
+                super::redact::apply(b, src, &req.redactions)?;
+            }
             build_and_serialise(
                 b,
                 src,
                 bytes.len(),
-                order,
-                inserts,
-                rotations,
-                annotations,
-                our_ids,
-                flatten,
+                &req.order,
+                &req.inserts,
+                &req.rotations,
+                &req.annotations,
+                &req.our_ids,
+                req.flatten,
             )
-        });
+        })();
         b.FPDF_CloseDocument(src);
         result?
     };
+
+    if !req.redactions.is_empty() {
+        // Regions remapped source -> final position; regions on deleted
+        // pages have nothing left to verify.
+        let final_regions: Vec<RedactRegion> = req
+            .redactions
+            .iter()
+            .filter_map(|r| {
+                req.order
+                    .iter()
+                    .position(|s| *s == i32::from(r.page_index))
+                    .map(|final_idx| RedactRegion {
+                        page_index: final_idx as u16,
+                        rect: r.rect,
+                    })
+            })
+            .collect();
+        super::redact::verify(b, &saved, &final_regions)?;
+    }
 
     write_atomically(dest_path, &saved)
 }

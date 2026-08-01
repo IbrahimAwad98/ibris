@@ -409,3 +409,48 @@ decision 015).
 **Cost:** The data URL rides the model and sidecar (tens of KB per
 signature). Transparency edge cases (straight vs premultiplied alpha)
 are untested against third-party readers — manual checklist.
+
+---
+
+## 018 - Redaction: refuse loudly, remove wholly, verify before rename
+
+**Decided:** Redaction removes every text and image object whose bounds
+intersect the region (whole-object, over-redaction by design), deletes
+intersecting annotations, draws a black marker box, regenerates the
+content stream, and - always, in the engine, not only in tests -
+re-parses the final bytes and proves the regions extract no text and
+contain no images before the atomic rename. When the redacted text also
+lives in a channel PDFium cannot rewrite - document metadata (no
+setter API), outline titles (read-only API), an annotation or form
+field elsewhere - the save FAILS with the channel named. Documents
+with embedded attachments are refused entirely. The UI for redaction
+does not exist yet; the engine landed first so the safety-critical
+part is test-proven before anything looks clickable.
+
+**Alternatives:** Drawing a black rectangle (the classic lie - text
+stays extractable; ARCHITECTURE.md bans it). Partial-glyph removal
+(PDFium's public surface cannot split a text object). Removing
+intersecting Form XObjects wholesale (would silently erase unrelated
+content drawn by the same form; refused instead). Scrubbing metadata
+by hand-editing the file bytes (fragile against object streams and
+cross-reference layouts; a wrong offset corrupts the document).
+
+**Why:** For a safety feature the failure mode matters more than the
+feature: a redaction that quietly leaves the text in /Info or a
+bookmark is worse than one that refuses. Refusal messages tell the
+user which channel leaks and what to do (clear the field, delete the
+annotation). Over-redaction errs in the only acceptable direction.
+
+**Cost:** Whole-object removal can take out more text than selected
+(a region over one word removes the full text run). The refusal scan
+uses case-folded tokens of 4+ characters from the region text - a
+heuristic, documented here, not a semantic match. Redaction of content
+inside nested Form XObjects is refused, full stop.
+
+**OCR (the other half of M5), deferred honestly:** Tesseract is the
+right engine (Apache-2.0, passes decision 003), but on Windows it means
+building/bundling the native tesseract + leptonica libraries and
+shipping traineddata - a packaging project, not an afternoon. Rather
+than bolt it on shakily at the end of a long session, OCR moves to its
+own slice with the searchable-text-layer design done next to it.
+Nothing in the redaction design blocks it.
