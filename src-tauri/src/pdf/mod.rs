@@ -3,6 +3,7 @@ pub mod dark;
 pub mod engine;
 pub mod error;
 pub mod form;
+pub mod redact;
 pub mod save;
 pub mod service;
 pub mod text;

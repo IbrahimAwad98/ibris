@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 
 use ibris_lib::pdf::annot::{AnnotGeom, AnnotRect, AnnotationData};
+use ibris_lib::pdf::save::SaveRequest;
 use ibris_lib::pdf::service::PdfService;
 
 fn fixture(name: &str) -> PathBuf {
@@ -49,13 +50,12 @@ async fn reordering_moves_annotations_with_their_pages() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![1, 0],
-            vec![],
-            vec![],
-            vec![rect_annot("m3-a", 0)],
-            vec!["m3-a".into()],
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![1, 0],
+                annotations: vec![rect_annot("m3-a", 0)],
+                our_ids: vec!["m3-a".into()],
+                ..Default::default()
+            },
         )
         .await
         .expect("save failed");
@@ -80,13 +80,9 @@ async fn deleting_a_page_drops_it_and_its_annotations() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![1],
-            vec![], // keep only source page 1
-            vec![],
-            vec![rect_annot("m3-b", 0)], // annotation on the deleted page
-            vec!["m3-b".into()],
-            vec![],
-            false,
+            SaveRequest { order: vec![1], rotations: // keep only source page 1
+            vec![], annotations: vec![rect_annot("m3-b", 0)], our_ids: // annotation on the deleted page
+            vec!["m3-b".into()], ..Default::default() },
         )
         .await
         .expect("save failed");
@@ -109,13 +105,11 @@ async fn rotation_is_saved_into_the_file() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0, 1],
-            vec![],
-            vec![(0, 90)],
-            vec![],
-            vec![],
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0, 1],
+                rotations: vec![(0, 90)],
+                ..Default::default()
+            },
         )
         .await
         .expect("save failed");
@@ -149,13 +143,10 @@ async fn extraction_to_another_file_leaves_the_source_alone() {
         .save_document(
             path.clone(),
             extracted.clone(),
-            vec![1],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![1],
+                ..Default::default()
+            },
         )
         .await
         .expect("extract failed");
@@ -200,16 +191,16 @@ async fn inserted_pages_from_another_file_materialise_at_save() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0, -1, 1],
-            vec![ibris_lib::pdf::save::InsertSource {
-                path: fixture("plain-text.pdf"),
-                page_index: 0,
-            }],
-            vec![],
-            vec![rect_annot("m3-i", 1)],
-            vec!["m3-i".into()],
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0, -1, 1],
+                inserts: vec![ibris_lib::pdf::save::InsertSource {
+                    path: fixture("plain-text.pdf"),
+                    page_index: 0,
+                }],
+                annotations: vec![rect_annot("m3-i", 1)],
+                our_ids: vec!["m3-i".into()],
+                ..Default::default()
+            },
         )
         .await
         .expect("insert save failed");

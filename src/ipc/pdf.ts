@@ -30,6 +30,12 @@ export interface FormInfo {
 }
 
 /** A field value to write at save; mirrors Rust FieldWrite. */
+/** One region to redact (page points, top-left origin, source pages). */
+export interface RedactRegion {
+  pageIndex: number;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
 export type FieldWrite =
   | { kind: "text"; name: string; value: string }
   | { kind: "checkbox"; name: string; checked: boolean }
@@ -243,6 +249,7 @@ export async function saveDocument(
   inserts: InsertSource[] = [],
   fieldValues: FieldWrite[] = [],
   flatten = false,
+  redactions: RedactRegion[] = [],
 ): Promise<void> {
   await invoke("save_document", {
     srcPath,
@@ -254,6 +261,7 @@ export async function saveDocument(
     inserts,
     fieldValues,
     flatten,
+    redactions,
   });
 }
 

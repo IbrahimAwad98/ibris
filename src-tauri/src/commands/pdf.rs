@@ -145,18 +145,22 @@ pub async fn save_document(
     our_ids: Vec<String>,
     field_values: Vec<crate::pdf::form::FieldWrite>,
     flatten: bool,
+    redactions: Vec<crate::pdf::redact::RedactRegion>,
 ) -> Result<(), PdfError> {
     state
         .save_document(
             PathBuf::from(src_path),
             PathBuf::from(dest_path),
-            order,
-            inserts,
-            rotations,
-            annotations,
-            our_ids,
-            field_values,
-            flatten,
+            crate::pdf::save::SaveRequest {
+                order,
+                inserts,
+                rotations,
+                annotations,
+                our_ids,
+                field_values,
+                flatten,
+                redactions,
+            },
         )
         .await
 }

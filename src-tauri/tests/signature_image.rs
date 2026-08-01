@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use ibris_lib::pdf::annot::{AnnotGeom, AnnotRect, AnnotationData};
+use ibris_lib::pdf::save::SaveRequest;
 use ibris_lib::pdf::service::PdfService;
 
 fn fixture(name: &str) -> PathBuf {
@@ -118,13 +119,12 @@ async fn signature_image_round_trips_and_draws() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0],
-            vec![],
-            vec![],
-            vec![signature(&data_url)],
-            vec!["sig-1".into()],
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0],
+                annotations: vec![signature(&data_url)],
+                our_ids: vec!["sig-1".into()],
+                ..Default::default()
+            },
         )
         .await
         .expect("save failed");

@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use ibris_lib::pdf::annot::{AnnotGeom, AnnotPoint, AnnotRect, AnnotationData};
+use ibris_lib::pdf::save::SaveRequest;
 use ibris_lib::pdf::service::PdfService;
 
 fn fixture(name: &str) -> PathBuf {
@@ -137,13 +138,12 @@ async fn save_one_of_each(service: &PdfService, path: &PathBuf) -> Vec<Annotatio
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0],
-            vec![],
-            vec![],
-            annots.clone(),
-            ids,
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0],
+                annotations: annots.clone(),
+                our_ids: ids,
+                ..Default::default()
+            },
         )
         .await
         .expect("save failed");

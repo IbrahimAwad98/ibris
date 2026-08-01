@@ -198,30 +198,20 @@ impl PdfService {
     /// subset order with another path is an extraction). The viewing
     /// document is untouched (see pdf/save.rs). Fails with `Io`,
     /// `Corrupt`, or `Internal`.
-    #[allow(clippy::too_many_arguments)] // mirrors the wire format
+    /// Applies a [`super::save::SaveRequest`] to the file at `src_path`,
+    /// writing the result to `dest_path` (same path means an in-place
+    /// save). The viewing document is untouched (see pdf/save.rs).
     pub async fn save_document(
         &self,
         src_path: PathBuf,
         dest_path: PathBuf,
-        order: Vec<i32>,
-        inserts: Vec<super::save::InsertSource>,
-        rotations: Vec<(u16, u16)>,
-        annotations: Vec<super::annot::AnnotationData>,
-        our_ids: Vec<String>,
-        field_values: Vec<super::form::FieldWrite>,
-        flatten: bool,
+        request: super::save::SaveRequest,
     ) -> Result<(), PdfError> {
         let (reply, rx) = oneshot::channel();
         EngineHandle::global().send(EngineMsg::SaveDocument {
             src_path,
             dest_path,
-            order,
-            inserts,
-            rotations,
-            annotations,
-            our_ids,
-            field_values,
-            flatten,
+            request: Box::new(request),
             reply,
         })?;
         rx.await.map_err(|_| PdfError::Internal {

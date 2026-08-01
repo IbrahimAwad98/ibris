@@ -137,19 +137,7 @@ pub enum EngineMsg {
     SaveDocument {
         src_path: PathBuf,
         dest_path: PathBuf,
-        /// Final page sequence as source indexes; omissions are deletions;
-        /// negative entries reference `inserts` (order -(k+1) = inserts[k]).
-        order: Vec<i32>,
-        /// Pages imported from other files.
-        inserts: Vec<super::save::InsertSource>,
-        /// Extra clockwise rotation in degrees per source page.
-        rotations: Vec<(u16, u16)>,
-        annotations: Vec<super::annot::AnnotationData>,
-        our_ids: Vec<String>,
-        /// Form field values to fill (M4).
-        field_values: Vec<super::form::FieldWrite>,
-        /// Flatten annotations and fields into page content (M4).
-        flatten: bool,
+        request: Box<super::save::SaveRequest>,
         reply: oneshot::Sender<Result<(), PdfError>>,
     },
     /// Concatenates whole files into a new document.
@@ -426,13 +414,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
             EngineMsg::SaveDocument {
                 src_path,
                 dest_path,
-                order,
-                inserts,
-                rotations,
-                annotations,
-                our_ids,
-                field_values,
-                flatten,
+                request,
                 reply,
             } => {
                 // pdfium()? guarantees the bindings global is initialised
@@ -440,18 +422,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 let result = pdfium().map(|_| ()).and_then(|()| {
                     struct Access;
                     impl PdfiumLibraryBindingsAccessor<'static> for Access {}
-                    super::save::save_document(
-                        Access.bindings(),
-                        &src_path,
-                        &dest_path,
-                        &order,
-                        &inserts,
-                        &rotations,
-                        &annotations,
-                        &our_ids,
-                        &field_values,
-                        flatten,
-                    )
+                    super::save::save_document(Access.bindings(), &src_path, &dest_path, &request)
                 });
                 let _ = reply.send(result);
             }

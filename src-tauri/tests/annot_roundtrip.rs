@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 
 use ibris_lib::pdf::annot::{AnnotGeom, AnnotPoint, AnnotRect, AnnotationData};
+use ibris_lib::pdf::save::SaveRequest;
 use ibris_lib::pdf::service::PdfService;
 
 fn fixture(name: &str) -> PathBuf {
@@ -152,13 +153,12 @@ async fn every_annotation_type_round_trips() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0],
-            vec![],
-            vec![],
-            annots.clone(),
-            ids.clone(),
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0],
+                annotations: annots.clone(),
+                our_ids: ids.clone(),
+                ..Default::default()
+            },
         )
         .await
         .expect("save failed");
@@ -238,13 +238,12 @@ async fn every_annotation_type_round_trips() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0],
-            vec![],
-            vec![],
-            annots,
-            ids,
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0],
+                annotations: annots,
+                our_ids: ids,
+                ..Default::default()
+            },
         )
         .await
         .expect("second save failed");
@@ -276,13 +275,12 @@ async fn appearance_streams_actually_draw() {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0],
-            vec![],
-            vec![],
-            annots,
-            vec!["id-rect-render".into()],
-            vec![],
-            false,
+            SaveRequest {
+                order: vec![0],
+                annotations: annots,
+                our_ids: vec!["id-rect-render".into()],
+                ..Default::default()
+            },
         )
         .await
         .expect("save failed");
