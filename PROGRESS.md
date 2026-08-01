@@ -205,3 +205,18 @@ at the bottom. Branch per milestone; nothing pushed.
   keys as the load-bearing fallback when other software strips private
   keys — never a silent read-only regression (commit 4d97353). Now
   implementing.
+
+- **2026-08-01 21:45** — M2 read-only gap CLOSED. Save writes
+  `/NM = ibris:<uuid>` + IbrisData JSON per annotation; open does a raw
+  pre-scan (IbrisData → model, else reconstruction from QuadPoints/
+  InkList//Rect//Contents//CA/border//M), suppresses recovered
+  annotations in the viewing document via the safe delete_annotation
+  API, and returns them with DocumentInfo; loadEditState seeds the
+  store + savedIds unless a sidecar restored state. Three new engine
+  tests: verbatim round-trip + render-suppression proof (0 red pixels
+  where the rect was), IbrisData stripped by byte-patching the key name
+  in place (same length, xref intact) → all 10 reconstruct with arrow
+  degrading to line as documented, and /NM de-tagged → foreign: not
+  recovered, still renders. Store test: reopened annotation delete +
+  undo intact, savedIds preserved. DECISIONS.md 015. Gate green: cargo
+  test 40, npm test 111, clippy/fmt/deny/lint/typecheck.

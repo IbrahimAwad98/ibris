@@ -36,6 +36,11 @@ pub struct PageSizePt {
 pub struct DocumentInfo {
     pub page_count: u16,
     pub pages: Vec<PageSizePt>,
+    /// Our own saved annotations, recovered from the file at open
+    /// (M2-PLAN §8). The frontend seeds its document store with these; the
+    /// viewing document has them suppressed so the bitmap never
+    /// double-renders against the SVG overlay.
+    pub annotations: Vec<super::annot::AnnotationData>,
 }
 
 /// One rendered page: tightly packed RGBA8 pixels.
@@ -530,7 +535,38 @@ fn open_one(
     let bytes = std::fs::read(path).map_err(|e| PdfError::Io {
         detail: format!("reading {}: {e}", path.display()),
     })?;
-    let document = pdfium()?.load_pdf_from_byte_vec(bytes, None)?;
+
+    // Recover our own saved annotations (raw scan of a throwaway load)
+    // before the viewing document exists. Failures here must not block
+    // opening — a corrupt-but-parseable file still opens read-only.
+    let recovered = {
+        struct Access;
+        impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+        let b = pdfium().map(|_| Access.bindings())?;
+        unsafe {
+            let raw = b.FPDF_LoadMemDocument64(&bytes, None);
+            if raw.is_null() {
+                None
+            } else {
+                let r = super::annot::read_ibris_annotations(b, raw);
+                b.FPDF_CloseDocument(raw);
+                Some(r)
+            }
+        }
+    };
+
+    let mut document = pdfium()?.load_pdf_from_byte_vec(bytes, None)?;
+
+    // Suppress the recovered annotations in the viewing document (memory
+    // only — the disk file is untouched): they now live in the frontend
+    // model and render through the SVG overlay.
+    let annotations = match recovered {
+        Some(r) => {
+            suppress_annotations(&mut document, &r.suppress_names);
+            r.annotations
+        }
+        None => Vec::new(),
+    };
 
     let pages: Vec<PageSizePt> = document
         .pages()
@@ -543,12 +579,42 @@ fn open_one(
     let info = DocumentInfo {
         page_count: pages.len() as u16,
         pages,
+        annotations,
     };
 
     let id = *next_id;
     *next_id += 1;
     docs.insert(id, document);
     Ok((id, info))
+}
+
+/// Deletes every annotation whose /NM is in `names` from the in-memory
+/// viewing document. Never touches disk; best-effort — an annotation that
+/// refuses deletion just keeps rendering via the bitmap (read-only), which
+/// is the graceful degradation M2-PLAN §8 specifies.
+fn suppress_annotations(document: &mut PdfDocument<'_>, names: &[String]) {
+    if names.is_empty() {
+        return;
+    }
+    let count = document.pages().len();
+    for page_index in 0..count {
+        let Ok(mut page) = document.pages().get(page_index) else {
+            continue;
+        };
+        loop {
+            // Through annotations_mut() so the fetched annotation borrows
+            // the page's true lifetime, not this statement's.
+            let annots = page.annotations_mut();
+            let target = annots
+                .iter()
+                .position(|a| a.name().is_some_and(|n| names.contains(&n)));
+            let Some(at) = target else { break };
+            let Ok(annot) = annots.get(at) else { break };
+            if annots.delete_annotation(annot).is_err() {
+                break;
+            }
+        }
+    }
 }
 
 /// Renders one tile of a page: the region `rect` of the page as it would

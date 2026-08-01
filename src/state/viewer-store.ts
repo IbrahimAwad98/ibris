@@ -7,6 +7,7 @@ import {
   type PageSizePt,
 } from "../ipc/pdf";
 
+import type { Annotation } from "../lib/annotations";
 import type { Rotation } from "../lib/coords";
 import { clampScale } from "../lib/zoom";
 import { rotatePages, useDocumentStore } from "./document-store";
@@ -29,6 +30,9 @@ export interface ViewerState {
   /** Low-res page bitmaps keyed by source page, kept for the document's
    * lifetime — reordering never invalidates them. */
   previews: ReadonlyMap<number, ImageBitmap>;
+  /** Our own saved annotations recovered by the engine at open — consumed
+   * by loadEditState to seed the document store (M2-PLAN §8). */
+  docAnnotations: Annotation[];
   error: string | null;
   scale: number;
   fitMode: FitMode;
@@ -99,6 +103,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   docId: null,
   pages: [],
   previews: new Map<number, ImageBitmap>(),
+  docAnnotations: [],
   error: null,
   scale: DEFAULT_SCALE,
   fitMode: null,
@@ -168,6 +173,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       docId: null,
       pages: [],
       previews: new Map(),
+      docAnnotations: [],
       error: null,
       scale: DEFAULT_SCALE,
       fitMode: null,
@@ -189,7 +195,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       await closeDocument(doc.docId).catch(() => undefined);
       return;
     }
-    set({ docId: doc.docId, pages: doc.pages });
+    set({ docId: doc.docId, pages: doc.pages, docAnnotations: doc.annotations });
     // Deliberately not awaited: openPath resolves on metadata so callers
     // (tab open, session restore) aren't gated on a full preview pass.
     void get().resumePreviews();
@@ -233,6 +239,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       docId: null,
       pages: [],
       previews: new Map(),
+      docAnnotations: [],
       error: null,
       scale: DEFAULT_SCALE,
       fitMode: null,

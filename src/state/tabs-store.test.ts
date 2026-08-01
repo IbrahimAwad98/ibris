@@ -46,6 +46,7 @@ beforeEach(() => {
     docId: nextDocId++,
     pageCount: 3,
     pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
+    annotations: [],
   }));
   useTabsStore.setState({
     tabs: [],
@@ -232,6 +233,7 @@ describe("session restore", () => {
         docId: nextDocId++,
         pageCount: 3,
         pages: Array.from({ length: 3 }, () => ({ width: 612, height: 792 })),
+        annotations: [],
       };
     });
     useTabsStore.setState({
