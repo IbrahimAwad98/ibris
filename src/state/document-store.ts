@@ -16,6 +16,26 @@ import { annotationNoun } from "../lib/annotations";
 import type { Rotation } from "../lib/coords";
 import type { FileFingerprint } from "../ipc/sidecar";
 
+/**
+ * A page pulled in from another PDF (M3 insert-from-file). It exists only
+ * in the model until save materialises it — the viewer shows a
+ * placeholder. Referenced from `pageOrder` by negative entries:
+ * slot value -(k+1) means `inserts[k]` (own pages are >= 0).
+ */
+export interface InsertedPage {
+  path: string;
+  pageIndex: number;
+  /** Page size in points, for placeholder layout. */
+  width: number;
+  height: number;
+}
+
+/** The pageOrder entry referencing `inserts[k]`. */
+export const insertRef = (k: number): number => -(k + 1);
+/** Inverse of {@link insertRef}; null for ordinary source pages. */
+export const insertIndexOf = (src: number): number | null =>
+  src < 0 ? -src - 1 : null;
+
 export type CommandRecord =
   | {
       id: string;
@@ -49,6 +69,20 @@ export type CommandRecord =
         before: Record<number, Rotation>;
         after: Record<number, Rotation>;
       };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "insert-pages";
+      /** `after` references `pages` via insertRef(base + i). Undo swaps
+       * the orders; the registered pages stay (unreferenced entries are
+       * harmless and redo re-references them). */
+      payload: {
+        before: number[];
+        after: number[];
+        base: number;
+        pages: InsertedPage[];
+      };
     };
 
 type Annotations = Record<AnnotationId, Annotation>;
@@ -56,10 +90,14 @@ type Annotations = Record<AnnotationId, Annotation>;
 /** The state commands operate on. */
 interface EditCore {
   annotations: Annotations;
-  /** View slot → source (engine) page index; null before a doc is loaded. */
+  /** View slot → source (engine) page index, or a negative insertRef;
+   * null before a doc is loaded. */
   pageOrder: number[] | null;
   /** Rotation per *source* page; missing = 0. Saved into the file. */
   rotations: Record<number, Rotation>;
+  /** Pages inserted from other files, referenced by negative pageOrder
+   * entries. Append-only within a session; save materialises them. */
+  inserts: InsertedPage[];
 }
 
 function applyRecord(core: EditCore, record: CommandRecord): EditCore {
@@ -84,6 +122,15 @@ function applyRecord(core: EditCore, record: CommandRecord): EditCore {
         ...core,
         rotations: { ...core.rotations, ...record.payload.after },
       };
+    case "insert-pages": {
+      // Registration is idempotent (fixed positions), so redo after undo
+      // and inverted records replay safely.
+      const inserts = [...core.inserts];
+      record.payload.pages.forEach((p, i) => {
+        inserts[record.payload.base + i] = p;
+      });
+      return { ...core, inserts, pageOrder: record.payload.after };
+    }
   }
 }
 
@@ -105,6 +152,15 @@ function invertRecord(record: CommandRecord): CommandRecord {
           after: record.payload.before,
         },
       } as CommandRecord;
+    case "insert-pages":
+      return {
+        ...record,
+        payload: {
+          ...record.payload,
+          before: record.payload.after,
+          after: record.payload.before,
+        },
+      };
   }
 }
 
@@ -154,6 +210,7 @@ function core(state: DocumentState): EditCore {
     annotations: state.annotations,
     pageOrder: state.pageOrder,
     rotations: state.rotations,
+    inserts: state.inserts,
   };
 }
 
@@ -161,6 +218,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   annotations: {},
   pageOrder: null,
   rotations: {},
+  inserts: [],
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -227,6 +285,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       annotations: {},
       pageOrder: null,
       rotations: {},
+      inserts: [],
       commands: [],
       cursor: 0,
       savedCursor: 0,
@@ -241,6 +300,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       annotations,
       pageOrder,
       rotations,
+      inserts,
       commands,
       cursor,
       savedCursor,
@@ -250,6 +310,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       annotations,
       pageOrder,
       rotations,
+      inserts,
       commands,
       cursor,
       savedCursor,
@@ -300,6 +361,24 @@ export function setPageOrder(
     type: "set-page-order",
     label,
     payload: { before, after },
+  };
+}
+
+/** Command for pages pulled in from another file. `after` must reference
+ * `pages` via insertRef(base + i); `base` is the inserts length at build
+ * time so registration lands at fixed positions. */
+export function insertPages(
+  before: number[],
+  after: number[],
+  base: number,
+  pages: InsertedPage[],
+  label: string,
+): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "insert-pages",
+    label,
+    payload: { before, after, base, pages },
   };
 }
 

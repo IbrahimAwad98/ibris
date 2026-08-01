@@ -243,3 +243,28 @@ at the bottom. Branch per milestone; nothing pushed.
   rotations/annotations, so extracted pages leave exactly as shown,
   saved or not. Commands are palette-only (no shortcuts). Not done via
   UI interaction (no synthetic input): on the manual checklist.
+
+- **2026-08-01 22:30** — HONESTY CORRECTION on 07dbce7: that commit
+  claims a green gate but contains 4 eslint errors (useless escapes in
+  page-ops.test.ts — the heredoc collapsed the double backslashes).
+  The gate command piped eslint through `tail -1`, and the pipe's exit
+  code masked the failure. Tests/typecheck/rust were genuinely green;
+  lint was not. Fixed in the next commit; every gate from here on runs
+  with `set -o pipefail` and explicit OK echoes.
+
+- **2026-08-01 22:32** — Insert-from-file landed, M3 feature-complete.
+  Design keeps hard rule 1: inserting is a stack command, not a disk
+  write. `pageOrder` holds negative refs -(k+1) → `inserts[k]`
+  ({path, pageIndex, width, height}); the viewer and thumbnails render
+  placeholders (dashed box, "renders after save") sized from the
+  registered page; save resolves the refs by importing runs from a
+  per-path document cache, and the structural rebase (decision 014)
+  then turns them into real pages. Sidecar format gains `inserts`
+  (old sidecars parse with a [] default — no version bump needed).
+  Rotate is guarded off placeholders until they materialise. Wire:
+  order is i32 now, plus an inserts array. Tests: engine
+  (dark-photo-charts + plain-text page interleaved: sizes, count,
+  annotation follows its page across the insert) and store
+  (insert/undo/redo keeps order + registry consistent). Gate green
+  both sides with pipefail: cargo test 41 across 12 suites, clippy,
+  fmt, deny; npm test 117, lint, typecheck.

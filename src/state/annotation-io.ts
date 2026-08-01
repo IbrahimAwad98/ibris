@@ -42,6 +42,7 @@ export async function loadEditState(path: string): Promise<void> {
         annotations: Object.fromEntries(reopened.map((a) => [a.id, a])),
         pageOrder: null,
         rotations: {},
+        inserts: [],
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -141,7 +142,15 @@ export async function saveSubset(
   ];
   // The engine drops annotations whose page is not in the order and
   // remaps the rest, so the whole set can be passed as-is.
-  await ipcSaveDocument(openPath, target, subset, rotations, annotations, ourIds);
+  await ipcSaveDocument(
+    openPath,
+    target,
+    subset,
+    rotations,
+    annotations,
+    ourIds,
+    s.inserts.map((p) => ({ path: p.path, pageIndex: p.pageIndex })),
+  );
 }
 
 /** Saves the current structure + annotations onto `target` (Save As when
@@ -162,7 +171,15 @@ export async function saveToPath(openPath: string, target: string): Promise<void
   const ourIds = [
     ...new Set([...s.savedIds, ...annotations.map((a) => a.id)]),
   ];
-  await ipcSaveDocument(openPath, target, order, rotations, annotations, ourIds);
+  await ipcSaveDocument(
+    openPath,
+    target,
+    order,
+    rotations,
+    annotations,
+    ourIds,
+    s.inserts.map((p) => ({ path: p.path, pageIndex: p.pageIndex })),
+  );
   const fresh = await fileFingerprint(target).catch(() => null);
   if (target !== openPath) return;
 
@@ -194,6 +211,7 @@ export async function saveToPath(openPath: string, target: string): Promise<void
       annotations: remapped,
       pageOrder: null,
       rotations: {},
+      inserts: [], // materialised into the file by this save
       commands: [],
       cursor: 0,
       savedCursor: 0,
