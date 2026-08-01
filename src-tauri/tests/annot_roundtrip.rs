@@ -183,9 +183,10 @@ async fn every_annotation_type_round_trips() {
         ("id-stamp", STAMP),
     ];
     for (id, subtype) in expect_subtype {
+        // /NM carries the ownership prefix on disk (M2-PLAN §8).
         let a = read
             .iter()
-            .find(|a| a.id == id)
+            .find(|a| a.id == format!("ibris:{id}"))
             .unwrap_or_else(|| panic!("{id} missing after round trip"));
         assert_eq!(a.subtype, subtype, "{id} came back as the wrong subtype");
         assert_eq!(a.page_index, 0, "{id} moved page");
@@ -207,7 +208,7 @@ async fn every_annotation_type_round_trips() {
     // fixture, so pdf_y = 792 - y).
     let hl = read
         .iter()
-        .find(|a| a.id == "id-highlight")
+        .find(|a| a.id == "ibris:id-highlight")
         .expect("highlight");
     assert_eq!(hl.quad_count, 2, "highlight quad count");
     assert!(
@@ -221,10 +222,10 @@ async fn every_annotation_type_round_trips() {
         hl.rect.1
     );
 
-    let note = read.iter().find(|a| a.id == "id-note").expect("note");
+    let note = read.iter().find(|a| a.id == "ibris:id-note").expect("note");
     assert_eq!(note.contents, "A round-trip note ✓", "note contents");
 
-    let rc = read.iter().find(|a| a.id == "id-rect").expect("rect");
+    let rc = read.iter().find(|a| a.id == "ibris:id-rect").expect("rect");
     // /Rect is the drawn rect inflated by the stroke width (2.0).
     assert!((rc.rect.0 - 218.0).abs() < 0.5, "rect left: {}", rc.rect.0);
     assert!((rc.rect.2 - 342.0).abs() < 0.5, "rect right: {}", rc.rect.2);
@@ -269,6 +270,18 @@ async fn appearance_streams_actually_draw() {
         )
         .await
         .expect("save failed");
+
+    // Opening would recover-and-suppress our own annotation (M2-PLAN §8),
+    // so de-tag it first: this test proves the /AP stream itself draws,
+    // exactly as a third-party PDFium-based reader would draw it.
+    let mut bytes = std::fs::read(&path).expect("read saved file");
+    let tag = b"(ibris:";
+    let pos = bytes
+        .windows(tag.len())
+        .position(|w| w == tag)
+        .expect("prefixed /NM not found in saved bytes");
+    bytes[pos..pos + tag.len()].copy_from_slice(b"(third:");
+    std::fs::write(&path, bytes).expect("write de-tagged file");
 
     let (doc_id, _) = service.open(path).await.expect("reopen failed");
     let page = service

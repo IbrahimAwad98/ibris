@@ -18,8 +18,10 @@ import { useDocumentStore } from "./document-store";
 import { useViewerStore } from "./viewer-store";
 
 /** Restores the edit state for a freshly opened document: a sidecar with
- * a matching fingerprint brings crashed edits back; anything else starts
- * clean (and a stale sidecar is deleted). */
+ * a matching fingerprint brings crashed edits back; otherwise our own
+ * saved annotations recovered from the file seed the store (clean, with
+ * an empty command stack — they are the saved state). A stale sidecar is
+ * deleted. */
 export async function loadEditState(path: string): Promise<void> {
   const store = useDocumentStore.getState();
   store.reset();
@@ -32,6 +34,22 @@ export async function loadEditState(path: string): Promise<void> {
       return;
     }
     void sidecarDelete(path).catch(() => undefined);
+  }
+  const reopened = useViewerStore.getState().docAnnotations;
+  if (reopened.length > 0) {
+    store.restore(
+      {
+        annotations: Object.fromEntries(reopened.map((a) => [a.id, a])),
+        pageOrder: null,
+        rotations: {},
+        commands: [],
+        cursor: 0,
+        savedCursor: 0,
+        savedIds: reopened.map((a) => a.id),
+      },
+      fp,
+    );
+    return;
   }
   useDocumentStore.setState({ fingerprint: fp });
 }

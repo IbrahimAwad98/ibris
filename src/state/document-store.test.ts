@@ -32,6 +32,38 @@ beforeEach(() => {
   useDocumentStore.getState().reset();
 });
 
+describe("reopened annotations (M2-PLAN §8)", () => {
+  it("a reopened annotation is deletable and undo restores it intact", () => {
+    // The seed loadEditState performs from engine-recovered annotations:
+    // clean stack, savedIds covering everything already in the file.
+    const reopened = makeNote("saved-1", "from the file");
+    useDocumentStore.getState().restore(
+      {
+        annotations: { "saved-1": reopened },
+        pageOrder: null,
+        rotations: {},
+        commands: [],
+        cursor: 0,
+        savedCursor: 0,
+        savedIds: ["saved-1"],
+      },
+      { size: 100, mtimeMs: 1 },
+    );
+    expect(useDocumentStore.getState().isDirty()).toBe(false);
+
+    useDocumentStore.getState().execute(removeAnnotation(reopened));
+    expect(useDocumentStore.getState().annotations["saved-1"]).toBeUndefined();
+    expect(useDocumentStore.getState().isDirty()).toBe(true);
+    // savedIds must survive the delete: the next save still has to remove
+    // the annotation from the file on disk.
+    expect(useDocumentStore.getState().savedIds).toEqual(["saved-1"]);
+
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().annotations["saved-1"]).toEqual(reopened);
+    expect(useDocumentStore.getState().isDirty()).toBe(false);
+  });
+});
+
 describe("execute / undo / redo", () => {
   it("adds, undoes, and redoes an annotation", () => {
     const s = useDocumentStore.getState();
