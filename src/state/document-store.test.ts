@@ -64,6 +64,31 @@ describe("reopened annotations (M2-PLAN §8)", () => {
   });
 });
 
+describe("page reorder (M3)", () => {
+  it("reorder then undo restores the order and keeps annotations on their pages", () => {
+    const s = useDocumentStore.getState();
+    s.initStructure(3);
+    const note = { ...makeNote("n1"), pageIndex: 2 };
+    s.execute(addAnnotation(note));
+
+    useDocumentStore
+      .getState()
+      .execute(setPageOrder([0, 1, 2], [2, 0, 1], "Reorder pages"));
+    // Annotations reference *source* pages, so the reorder moves them with
+    // their page by construction — the record must not touch them.
+    expect(useDocumentStore.getState().pageOrder).toEqual([2, 0, 1]);
+    expect(useDocumentStore.getState().annotations["n1"]?.pageIndex).toBe(2);
+
+    useDocumentStore.getState().undo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([0, 1, 2]);
+    expect(useDocumentStore.getState().annotations["n1"]).toEqual(note);
+
+    useDocumentStore.getState().redo();
+    expect(useDocumentStore.getState().pageOrder).toEqual([2, 0, 1]);
+    expect(useDocumentStore.getState().annotations["n1"]).toEqual(note);
+  });
+});
+
 describe("execute / undo / redo", () => {
   it("adds, undoes, and redoes an annotation", () => {
     const s = useDocumentStore.getState();
