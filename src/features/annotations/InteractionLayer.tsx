@@ -2,7 +2,9 @@ import { useRef, useState } from "react";
 import type { Rotation, Size } from "../../lib/coords";
 import { displayToPage } from "../../lib/coords";
 import { activeSettings, useToolStore } from "../../state/tool-store";
+import { addRedaction, useDocumentStore } from "../../state/document-store";
 import { AnnotationShape } from "./AnnotationShape";
+import { RedactionHatch, RedactionMarkShape } from "./RedactionLayer";
 import { createAnnotation } from "./annotate";
 import type { Annotation } from "../../lib/annotations";
 
@@ -20,7 +22,16 @@ interface Pt {
   y: number;
 }
 
-const DRAW_TOOLS = new Set(["ink", "rect", "ellipse", "line", "arrow", "note", "stamp"]);
+const DRAW_TOOLS = new Set([
+  "ink",
+  "rect",
+  "ellipse",
+  "line",
+  "arrow",
+  "note",
+  "stamp",
+  "redact",
+]);
 
 /** Captures pointer input for the drawing tools and previews the shape
  * being created; each completed gesture becomes one command. */
@@ -90,7 +101,22 @@ export function InteractionLayer({ pageIndex, pagePt, scale, rotation, outerRef 
       const dx = Math.abs(dragTo.x - dragFrom.x);
       const dy = Math.abs(dragTo.y - dragFrom.y);
       if (dx > 2 || dy > 2) {
-        if (tool === "rect" || tool === "ellipse") {
+        if (tool === "redact") {
+          // A pending, undoable mark — nothing touches the file until the
+          // user confirms a save (M5).
+          useDocumentStore.getState().execute(
+            addRedaction({
+              id: crypto.randomUUID(),
+              pageIndex,
+              rect: {
+                x: Math.min(dragFrom.x, dragTo.x),
+                y: Math.min(dragFrom.y, dragTo.y),
+                width: dx,
+                height: dy,
+              },
+            }),
+          );
+        } else if (tool === "rect" || tool === "ellipse") {
           createAnnotation(pageIndex, {
             kind: tool,
             rect: {
@@ -143,6 +169,25 @@ export function InteractionLayer({ pageIndex, pagePt, scale, rotation, outerRef 
           style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
         >
           <AnnotationShape annotation={preview} selected={false} />
+        </svg>
+      )}
+      {tool === "redact" && dragFrom && dragTo && (
+        <svg
+          width={pagePt.width * scale}
+          height={pagePt.height * scale}
+          viewBox={`0 0 ${pagePt.width} ${pagePt.height}`}
+          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        >
+          <RedactionHatch id="redact-hatch-preview" />
+          <RedactionMarkShape
+            rect={{
+              x: Math.min(dragFrom.x, dragTo.x),
+              y: Math.min(dragFrom.y, dragTo.y),
+              width: Math.abs(dragTo.x - dragFrom.x),
+              height: Math.abs(dragTo.y - dragFrom.y),
+            }}
+            hatchId="redact-hatch-preview"
+          />
         </svg>
       )}
       {noteAt && (

@@ -1,4 +1,5 @@
 import type { StampName } from "../../lib/annotations";
+import { useDocumentStore } from "../../state/document-store";
 import { useToolStore, type Tool } from "../../state/tool-store";
 
 const TOOLS: { id: Tool; label: string; title: string }[] = [
@@ -13,6 +14,12 @@ const TOOLS: { id: Tool; label: string; title: string }[] = [
   { id: "line", label: "Line", title: "Draw a line" },
   { id: "arrow", label: "Arrow", title: "Draw an arrow" },
   { id: "stamp", label: "Stamp", title: "Place a stamp" },
+  {
+    id: "redact",
+    label: "Redact",
+    title:
+      "Mark a region for redaction — content is permanently removed when you save",
+  },
 ];
 
 const STAMPS: StampName[] = ["approved", "rejected", "draft", "confidential"];
@@ -25,6 +32,9 @@ export function AnnotationToolbar() {
   const stamp = useToolStore((s) => s.stamp);
   const setTool = useToolStore((s) => s.setTool);
   const updateSettings = useToolStore((s) => s.updateSettings);
+  const pendingRedactions = useDocumentStore(
+    (s) => Object.keys(s.redactions).length,
+  );
 
   const showWidth = ["ink", "rect", "ellipse", "line", "arrow"].includes(tool);
   const showOpacity = tool === "highlight";
@@ -41,7 +51,15 @@ export function AnnotationToolbar() {
           {t.label}
         </button>
       ))}
-      {tool !== "select" && (
+      {pendingRedactions > 0 && (
+        <span className="redact-pending-note" role="status">
+          {pendingRedactions === 1
+            ? "1 region marked for redaction"
+            : `${pendingRedactions} regions marked for redaction`}
+          {" — content is permanently removed when you save"}
+        </span>
+      )}
+      {tool !== "select" && tool !== "redact" && (
         <span className="annot-settings">
           <input
             type="color"

@@ -14,7 +14,8 @@ export type Tool =
   | "ellipse"
   | "line"
   | "arrow"
-  | "stamp";
+  | "stamp"
+  | "redact";
 
 export interface ToolSettings {
   color: string;
@@ -34,6 +35,9 @@ const DEFAULTS: Record<Tool, ToolSettings> = {
   line: { color: "#c62828", opacity: 1, strokeWidth: 2 },
   arrow: { color: "#c62828", opacity: 1, strokeWidth: 2 },
   stamp: { color: "#2e7d32", opacity: 1, strokeWidth: 2 },
+  // Settings are unused: pending marks have one fixed look (never a
+  // black box) so a screenshot can't pass for a completed redaction.
+  redact: { color: "#c62828", opacity: 1, strokeWidth: 2 },
 };
 
 export interface ToolState {
