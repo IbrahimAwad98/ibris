@@ -9,3 +9,5 @@ src-tauri/pdfium/
 
 # local source archive for branding assets
 ibris-logo.zip
+
+public/shot.json
