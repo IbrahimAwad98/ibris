@@ -19,6 +19,8 @@ pub fn run() {
             commands::pdf::cancel_render,
             commands::pdf::cancel_renders,
             commands::pdf::save_document,
+            commands::pdf::list_text_objects,
+            commands::pdf::check_text_edit,
             commands::pdf::merge_documents,
             commands::pdf::close_document,
             commands::pdf::set_active_document,

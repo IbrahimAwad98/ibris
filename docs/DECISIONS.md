@@ -531,3 +531,40 @@ same honesty test that redaction's black-box ban encodes.
 pinned, permissively-licensed models — or official prebuilt Tesseract
 Windows artefacts. Either clears the reproducible-fetch bar and makes
 OCR an ordinary milestone.
+
+---
+
+## 021 - M6a text editing: glyph-path gate is authoritative; pending edits are overlay patches
+
+**Decided:** Three structural choices inside M6-PLAN §2's frame.
+(1) *The glyph gate is `FPDFFont_GetGlyphPath` per character*
+(whitespace exempt — spaces are advances, not outlines), run at
+confirm time as an engine dry-run against the on-disk bytes and again
+inside every save. The extract-back comparison after `FPDFText_SetText`
+is a second layer, not the gate: for simple fonts with standard
+encodings (WinAnsi etc.) extraction decodes through the *encoding*,
+which round-trips even when the *glyph* is missing — extraction alone
+would accept tofu. Proven by the subset-font fixture (a synthetic
+embedded TrueType carrying only {H,e,l,o,w,r,d,space}, built from
+scratch with fontTools so the repo has no third-party font licensing).
+(2) *Pending edits never touch the viewing document.* They are
+overlay patches (the decision-016 FormLayer pattern: opaque,
+paper-coloured, dashed amber outline) and the save takes the
+structural rebase path. The alternative — live `FPDFText_SetText` on
+the viewing document with engine-side undo replay — would put an IPC
+side effect inside every undo/redo/jumpTo/restore path for a cosmetic
+gain; M6-PLAN left this open and "less invasive" decides it.
+(3) *One content-rewriting feature per save*: text edits combined
+with flatten (any page) or with redaction (same page) are refused with
+instructions to save one first. Flatten adds text objects and
+redaction removes whole ones — either would force the save-time
+verification (exact per-object text comparison of every edited page,
+re-parsed from the final bytes before the rename) to weaken into
+heuristics. A refused combination keeps the check exact.
+
+**Cost:** Edits go stale across external file changes (refused with a
+reopen instruction — by design); the pending patch is close-but-not-
+WYSIWYG (overlay font differs from the embedded font until save);
+users must sequence flatten/redact/edit saves. `saveSubset`
+(extract/split) does not carry pending text edits — extraction exports
+the file's own text; noted as a ceiling, matching pending redactions.
