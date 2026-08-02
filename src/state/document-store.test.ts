@@ -3,6 +3,7 @@ import type { Annotation } from "../lib/annotations";
 import {
   addAnnotation,
   addRedaction,
+  editText,
   insertPages,
   insertRef,
   MAX_STACK,
@@ -13,6 +14,7 @@ import {
   setField,
   setFlattenForms,
   setPageOrder,
+  textEditKey,
   useDocumentStore,
 } from "./document-store";
 
@@ -52,6 +54,7 @@ describe("reopened annotations (M2-PLAN §8)", () => {
         fieldValues: {},
         flattenForms: false,
         redactions: {},
+        textEdits: {},
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -181,6 +184,48 @@ describe("pending redactions (M5)", () => {
   });
 });
 
+describe("pending text edits (M6a)", () => {
+  const entry = {
+    pageIndex: 0,
+    objectIndex: 3,
+    original: "Hello world",
+    text: "Held word",
+    rect: { x: 72, y: 80, width: 120, height: 18 },
+  };
+  const key = textEditKey(0, 3);
+
+  it("edit, undo, redo — a pending edit is fully undoable", () => {
+    const s = useDocumentStore.getState;
+    s().execute(editText(key, null, entry));
+    expect(s().textEdits[key]).toEqual(entry);
+    expect(s().isDirty()).toBe(true);
+
+    s().undo();
+    expect(s().textEdits[key]).toBeUndefined();
+    expect(s().isDirty()).toBe(false);
+
+    s().redo();
+    expect(s().textEdits[key]).toEqual(entry);
+  });
+
+  it("re-editing chains and a null after reverts to the file text", () => {
+    const s = useDocumentStore.getState;
+    s().execute(editText(key, null, entry));
+    const second = { ...entry, text: "Hold world" };
+    s().execute(editText(key, entry, second));
+    expect(s().textEdits[key]).toEqual(second);
+
+    // Typing the file's own text back drops the entry entirely.
+    s().execute(editText(key, second, null));
+    expect(s().textEdits[key]).toBeUndefined();
+
+    s().undo();
+    expect(s().textEdits[key]).toEqual(second);
+    s().undo();
+    expect(s().textEdits[key]).toEqual(entry);
+  });
+});
+
 describe("execute / undo / redo", () => {
   it("adds, undoes, and redoes an annotation", () => {
     const s = useDocumentStore.getState();
@@ -290,6 +335,7 @@ describe("serialisation", () => {
         fieldValues: {},
         flattenForms: false,
         redactions: {},
+        textEdits: {},
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,

@@ -146,6 +146,7 @@ pub async fn save_document(
     field_values: Vec<crate::pdf::form::FieldWrite>,
     flatten: bool,
     redactions: Vec<crate::pdf::redact::RedactRegion>,
+    text_edits: Vec<crate::pdf::edit_text::TextEdit>,
 ) -> Result<(), PdfError> {
     state
         .save_document(
@@ -160,8 +161,32 @@ pub async fn save_document(
                 field_values,
                 flatten,
                 redactions,
+                text_edits,
             },
         )
+        .await
+}
+
+#[tauri::command]
+pub async fn list_text_objects(
+    state: State<'_, PdfService>,
+    doc_id: u64,
+    page_index: u16,
+) -> Result<Vec<crate::pdf::edit_text::TextObjectInfo>, PdfError> {
+    state.list_text_objects(doc_id, page_index).await
+}
+
+/// Glyph-gate dry run for one edit; `Unsupported` names missing characters.
+#[tauri::command]
+pub async fn check_text_edit(
+    state: State<'_, PdfService>,
+    path: String,
+    page_index: u16,
+    object_index: u32,
+    after: String,
+) -> Result<(), PdfError> {
+    state
+        .check_text_edit(PathBuf::from(path), page_index, object_index, after)
         .await
 }
 

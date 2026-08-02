@@ -22,6 +22,7 @@ use pdfium_render::prelude::*;
 use serde::Deserialize;
 
 use super::annot::{write_annotations, AnnotationData};
+use super::edit_text::TextEdit;
 use super::error::PdfError;
 use super::form::FieldWrite;
 use super::redact::RedactRegion;
@@ -43,6 +44,7 @@ pub struct SaveRequest {
     pub field_values: Vec<FieldWrite>,
     pub flatten: bool,
     pub redactions: Vec<RedactRegion>,
+    pub text_edits: Vec<TextEdit>,
 }
 
 /// A page pulled from another file (M3 insert-from-file). Referenced by
@@ -139,6 +141,11 @@ pub fn save_document(
         detail: format!("reading {} for save: {e}", src_path.display()),
     })?;
 
+    // Post-edit snapshots of every edited page's text objects, taken from
+    // the source document after the edits land — what the final file must
+    // contain exactly (edit_text::verify, before the rename).
+    let mut edit_snapshot: Vec<(u16, Vec<String>)> = Vec::new();
+
     let saved = unsafe {
         let src = b.FPDF_LoadMemDocument64(&bytes, None);
         if src.is_null() {
@@ -151,6 +158,37 @@ pub fn save_document(
             // not survive FPDF_ImportPagesByIndex, so values must be
             // baked into the source pages (decision 016).
             super::form::apply_form_values(b, src, &req.field_values)?;
+            if !req.text_edits.is_empty() {
+                // Flatten adds text objects to page content and redaction
+                // removes whole objects — either would make the exact
+                // post-edit verification below meaningless. Honest refusal
+                // over a weakened check.
+                if req.flatten {
+                    return Err(PdfError::Unsupported {
+                        feature: "flattening and editing text in one save is not \
+                                  supported — save the text edits first, then flatten"
+                            .into(),
+                    });
+                }
+                if req
+                    .text_edits
+                    .iter()
+                    .any(|e| req.redactions.iter().any(|r| r.page_index == e.page_index))
+                {
+                    return Err(PdfError::Unsupported {
+                        feature: "editing text and redacting on the same page in one \
+                                  save is not supported — apply one, save, then the other"
+                            .into(),
+                    });
+                }
+                super::edit_text::apply(b, src, &req.text_edits)?;
+                let mut pages: Vec<u16> = req.text_edits.iter().map(|e| e.page_index).collect();
+                pages.sort_unstable();
+                pages.dedup();
+                for p in pages {
+                    edit_snapshot.push((p, super::edit_text::page_object_texts(b, src, p)?));
+                }
+            }
             if !req.redactions.is_empty() {
                 let tokens = super::redact::collect_region_text(b, src, &req.redactions)?;
                 super::redact::refuse_if_unscrubbable(b, src, &req.redactions, &tokens)?;
@@ -189,6 +227,21 @@ pub fn save_document(
             })
             .collect();
         super::redact::verify(b, &saved, &final_regions)?;
+    }
+
+    if !edit_snapshot.is_empty() {
+        // Snapshot pages remapped source → final position; an edited page
+        // deleted from the order has nothing left to verify.
+        let mapped: Vec<(u16, Vec<String>)> = edit_snapshot
+            .iter()
+            .filter_map(|(src_page, texts)| {
+                req.order
+                    .iter()
+                    .position(|s| *s == i32::from(*src_page))
+                    .map(|final_idx| (final_idx as u16, texts.clone()))
+            })
+            .collect();
+        super::edit_text::verify(b, &saved, &mapped)?;
     }
 
     write_atomically(dest_path, &saved)

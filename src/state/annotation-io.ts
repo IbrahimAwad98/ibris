@@ -48,6 +48,7 @@ export async function loadEditState(path: string): Promise<void> {
         fieldValues: {},
         flattenForms: false,
         redactions: {},
+        textEdits: {},
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -188,6 +189,12 @@ export async function saveToPath(
     );
     if (!confirmed) return false;
   }
+  const textEdits = Object.values(s.textEdits).map((e) => ({
+    pageIndex: e.pageIndex,
+    objectIndex: e.objectIndex,
+    before: e.original,
+    after: e.text,
+  }));
   const sourceCount = useViewerStore.getState().pages.length;
   const order = s.pageOrder ?? Array.from({ length: sourceCount }, (_, i) => i);
   const rotations = Object.entries(s.rotations)
@@ -198,11 +205,13 @@ export async function saveToPath(
     rotations.length > 0 ||
     order.length !== sourceCount ||
     order.some((src, i) => src !== i) ||
-    // Field values, flatten, and redactions change page content on disk;
-    // the viewer must reload so the bitmap matches — the rebase path.
+    // Field values, flatten, redactions, and text edits change page
+    // content on disk; the viewer must reload so the bitmap matches —
+    // the rebase path.
     fields.length > 0 ||
     s.flattenForms ||
-    redactions.length > 0;
+    redactions.length > 0 ||
+    textEdits.length > 0;
 
   const annotations = Object.values(s.annotations);
   const ourIds = [
@@ -219,6 +228,7 @@ export async function saveToPath(
     fields,
     s.flattenForms,
     redactions.map((r) => ({ pageIndex: r.pageIndex, rect: r.rect })),
+    textEdits,
   );
   const fresh = await fileFingerprint(target).catch(() => null);
   if (target !== openPath) return true;
@@ -255,6 +265,7 @@ export async function saveToPath(
       fieldValues: {}, // baked into the file by this save
       flattenForms: false,
       redactions: {}, // applied and engine-verified by this save
+      textEdits: {}, // applied and engine-verified by this save
       commands: [],
       cursor: 0,
       savedCursor: 0,
