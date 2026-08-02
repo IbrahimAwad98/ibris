@@ -47,6 +47,7 @@ export async function loadEditState(path: string): Promise<void> {
         inserts: [],
         fieldValues: {},
         flattenForms: false,
+        redactions: {},
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -117,8 +118,7 @@ export async function saveDocument(path: string): Promise<boolean> {
     );
     if (!overwrite) return false;
   }
-  await saveToPath(path, path);
-  return true;
+  return saveToPath(path, path);
 }
 
 /**
@@ -167,9 +167,27 @@ function fieldWrites(values: Record<string, FieldState>): FieldWrite[] {
 }
 
 /** Saves the current structure + annotations onto `target` (Save As when
- * target differs from the open document's path). */
-export async function saveToPath(openPath: string, target: string): Promise<void> {
+ * target differs from the open document's path). Returns false when the
+ * user declines the redaction confirmation — nothing is written then. */
+export async function saveToPath(
+  openPath: string,
+  target: string,
+): Promise<boolean> {
   const s = useDocumentStore.getState();
+  const redactions = Object.values(s.redactions);
+  if (redactions.length > 0) {
+    // Redaction is the one edit that cannot be undone once saved: the
+    // engine strips the content out of the file. Pending marks never
+    // reach the engine without this explicit confirmation.
+    const confirmed = await askUser(
+      `${redactions.length === 1 ? "1 region is" : `${redactions.length} regions are`} marked for redaction. ` +
+        "Saving permanently removes all text and images under the marked regions " +
+        "from the file. This cannot be undone after saving.",
+      "Apply redactions?",
+      "Redact and save",
+    );
+    if (!confirmed) return false;
+  }
   const sourceCount = useViewerStore.getState().pages.length;
   const order = s.pageOrder ?? Array.from({ length: sourceCount }, (_, i) => i);
   const rotations = Object.entries(s.rotations)
@@ -180,10 +198,11 @@ export async function saveToPath(openPath: string, target: string): Promise<void
     rotations.length > 0 ||
     order.length !== sourceCount ||
     order.some((src, i) => src !== i) ||
-    // Field values and flatten change page content on disk; the viewer
-    // must reload so the bitmap matches, which is the rebase path.
+    // Field values, flatten, and redactions change page content on disk;
+    // the viewer must reload so the bitmap matches — the rebase path.
     fields.length > 0 ||
-    s.flattenForms;
+    s.flattenForms ||
+    redactions.length > 0;
 
   const annotations = Object.values(s.annotations);
   const ourIds = [
@@ -199,9 +218,10 @@ export async function saveToPath(openPath: string, target: string): Promise<void
     s.inserts.map((p) => ({ path: p.path, pageIndex: p.pageIndex })),
     fields,
     s.flattenForms,
+    redactions.map((r) => ({ pageIndex: r.pageIndex, rect: r.rect })),
   );
   const fresh = await fileFingerprint(target).catch(() => null);
-  if (target !== openPath) return;
+  if (target !== openPath) return true;
 
   cancelSidecarWrite();
   void sidecarDelete(openPath).catch(() => undefined);
@@ -210,7 +230,7 @@ export async function saveToPath(openPath: string, target: string): Promise<void
     useDocumentStore
       .getState()
       .markSaved(annotations.map((a) => a.id), fresh);
-    return;
+    return true;
   }
 
   // A structural save changes what page indexes mean on disk, so the open
@@ -234,6 +254,7 @@ export async function saveToPath(openPath: string, target: string): Promise<void
       inserts: [], // materialised into the file by this save
       fieldValues: {}, // baked into the file by this save
       flattenForms: false,
+      redactions: {}, // applied and engine-verified by this save
       commands: [],
       cursor: 0,
       savedCursor: 0,
@@ -252,4 +273,5 @@ export async function saveToPath(openPath: string, target: string): Promise<void
   const newDocId = useViewerStore.getState().docId;
   void setActiveDocument(newDocId).catch(() => undefined);
   if (oldDocId !== null) void closeDocument(oldDocId).catch(() => undefined);
+  return true;
 }

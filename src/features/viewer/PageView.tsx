@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { nextRequestId, renderTile } from "../../ipc/pdf";
 import { AnnotationLayer } from "../annotations/AnnotationLayer";
 import { InteractionLayer } from "../annotations/InteractionLayer";
+import { RedactionLayer } from "../annotations/RedactionLayer";
 import type { Rect, Rotation, Size } from "../../lib/coords";
 import {
   displayRectToPageRect,
@@ -198,6 +199,7 @@ export function PageView({
         <SearchHighlights pageIndex={pageIndex} scale={scale} />
         <FormLayer pageIndex={pageIndex} scale={scale} />
         <AnnotationLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
+        <RedactionLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
         <InteractionLayer
           pageIndex={pageIndex}
           pagePt={pagePt}

@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Annotation } from "../lib/annotations";
 import {
   addAnnotation,
+  addRedaction,
   insertPages,
   insertRef,
   MAX_STACK,
   modifyAnnotation,
   removeAnnotation,
+  removeRedaction,
   rotatePages,
   setField,
   setFlattenForms,
@@ -49,6 +51,7 @@ describe("reopened annotations (M2-PLAN §8)", () => {
         inserts: [],
         fieldValues: {},
         flattenForms: false,
+        redactions: {},
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -143,6 +146,38 @@ describe("form fields (M4)", () => {
     expect(useDocumentStore.getState().flattenForms).toBe(true);
     useDocumentStore.getState().undo();
     expect(useDocumentStore.getState().flattenForms).toBe(false);
+  });
+});
+
+describe("pending redactions (M5)", () => {
+  const region = {
+    id: "r1",
+    pageIndex: 1,
+    rect: { x: 10, y: 20, width: 100, height: 14 },
+  };
+
+  it("mark, undo, redo — a pending mark is fully undoable", () => {
+    const s = useDocumentStore.getState;
+    s().execute(addRedaction(region));
+    expect(s().redactions["r1"]).toEqual(region);
+    expect(s().isDirty()).toBe(true);
+
+    s().undo();
+    expect(s().redactions["r1"]).toBeUndefined();
+    expect(s().isDirty()).toBe(false);
+
+    s().redo();
+    expect(s().redactions["r1"]).toEqual(region);
+  });
+
+  it("unmark round-trips through undo with the full region", () => {
+    const s = useDocumentStore.getState;
+    s().execute(addRedaction(region));
+    s().execute(removeRedaction(region));
+    expect(s().redactions["r1"]).toBeUndefined();
+
+    s().undo();
+    expect(s().redactions["r1"]).toEqual(region);
   });
 });
 
@@ -254,6 +289,7 @@ describe("serialisation", () => {
         inserts: [],
         fieldValues: {},
         flattenForms: false,
+        redactions: {},
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,
