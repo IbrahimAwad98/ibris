@@ -430,3 +430,13 @@ at the bottom. Branch per milestone; nothing pushed.
   clippy -D warnings, fmt, deny; npm test 125, lint, typecheck.
   NOT verified by hand (no synthetic input): drag-marking in the live
   app, the confirm/refusal dialogs on screen - manual checklist.
+
+- **2026-08-02 23:50** - OCR re-evaluated per instruction (not
+  rubber-stamped): Tesseract on Windows is still a vcpkg toolchain
+  build with no official pinned prebuilts - fails the get-pdfium.ps1
+  reproducible-fetch bar. New-since-018 pure-Rust engines checked:
+  ocrs is an early preview, Latin-only (disqualifying - our fixtures
+  include CJK); oar-ocr (PP-OCR) is promising but needs its own
+  model-licensing/pinning review. Deferred again with the full
+  reasoning and a concrete revisit trigger in DECISIONS 020. M5 is
+  hereby COMPLETE as redaction-only; proceeding to M6a.
