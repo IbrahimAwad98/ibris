@@ -454,3 +454,41 @@ shipping traineddata - a packaging project, not an afternoon. Rather
 than bolt it on shakily at the end of a long session, OCR moves to its
 own slice with the searchable-text-layer design done next to it.
 Nothing in the redaction design blocks it.
+
+---
+
+## 019 - Redaction UI: save is the commit gesture; pending marks are hatched, never black
+
+**Decided:** Marking a region for redaction is an ordinary undoable
+command producing a *pending mark*: a red diagonal-hatch overlay with a
+dashed border, an "REDACTS ON SAVE" label, and an × control — the page
+content stays visible through it. Nothing reaches the engine until the
+user saves, at which point a native warning dialog states the region
+count and that removal is permanent; declining aborts the whole save
+(it does not silently save without the redactions). When the engine
+refuses (decision 018's leak channels), the refusal text is shown
+verbatim in a native error dialog — every save entry point (Save,
+Save As, close-prompt save) routes failures through one message mapper
+and none can swallow the error.
+
+**Alternatives:** A separate "Apply redactions" action distinct from
+save (a second commit gesture to learn, and a state where a saved file
+and applied redactions can diverge); previewing the mark as a filled
+black box (indistinguishable in a screenshot from a completed
+redaction — exactly the lie decision 018 exists to prevent); saving
+without the redactions when the user declines the confirmation (the
+user's mental model is "I said don't do it", not "do the rest").
+
+**Why:** Save is already the single "write to disk" gesture in the
+architecture; redaction riding it — behind an explicit, counted,
+irreversibility-naming confirmation — keeps one commit model. The
+pending visual is designed around the screenshot test: if a screenshot
+of the pending state could pass for a done redaction, the design is
+wrong, so the mark keeps content visible and says what it will do, not
+what it has done.
+
+**Cost:** A redaction save always takes the structural rebase path
+(full reload, undo history reset) — correct anyway, since the page
+content changed on disk. Declining the confirmation aborts saves of
+unrelated edits too; the user unmarks regions (undoable, ×) to save
+without redacting.

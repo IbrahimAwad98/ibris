@@ -7,10 +7,12 @@ import {
   pickPdfs,
   pickPngImage,
   pickSavePath,
+  showError,
 } from "../../ipc/dialog";
 import { readFileAsDataUrl } from "../../ipc/fs";
 import { closeDocument, mergeDocuments, openDocument } from "../../ipc/pdf";
 import { siblingPartPath } from "../../lib/page-ops";
+import { saveErrorMessage } from "../../lib/pdf-error";
 import { eventMatches, parseShortcut } from "../../lib/shortcuts";
 import {
   saveDocument,
@@ -60,6 +62,13 @@ export interface AppCommand {
   run: () => void;
 }
 
+/** Every save path ends here on failure: the engine's refusal (e.g. a
+ * redaction blocked by a named leak channel) is shown verbatim, never a
+ * generic "something went wrong". */
+function reportSaveError(e: unknown): void {
+  void showError(saveErrorMessage(e), "Save failed");
+}
+
 const docOpen = () => useViewerStore.getState().docId !== null;
 const hasTabs = () => useTabsStore.getState().tabs.length > 0;
 
@@ -97,7 +106,7 @@ export function appCommands(): AppCommand[] {
       enabled: docOpen,
       run: () => {
         const path = activePath();
-        if (path) void saveDocument(path);
+        if (path) void saveDocument(path).catch(reportSaveError);
       },
     },
     {
@@ -109,7 +118,7 @@ export function appCommands(): AppCommand[] {
         const path = activePath();
         if (!path) return;
         void pickSavePath(path).then((target) => {
-          if (target) void saveToPath(path, target);
+          if (target) void saveToPath(path, target).catch(reportSaveError);
         });
       },
     },
@@ -259,7 +268,7 @@ export function appCommands(): AppCommand[] {
           if (!target) return;
           await saveSubset(path, target, [slot]);
           void useTabsStore.getState().openTab(target);
-        });
+        }).catch(reportSaveError);
       },
     },
     {
@@ -285,7 +294,7 @@ export function appCommands(): AppCommand[] {
           await saveSubset(path, second, range(at, slotCount));
           void useTabsStore.getState().openTab(first);
           void useTabsStore.getState().openTab(second);
-        });
+        }).catch(reportSaveError);
       },
     },
     {
@@ -300,7 +309,7 @@ export function appCommands(): AppCommand[] {
           if (!target) return;
           await mergeDocuments(paths, target);
           void useTabsStore.getState().openTab(target);
-        });
+        }).catch(reportSaveError);
       },
     },
     {

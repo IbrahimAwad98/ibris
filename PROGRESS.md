@@ -404,3 +404,29 @@ at the bottom. Branch per milestone; nothing pushed.
     (tool reads Select), but confirm the stale localStorage profile
     also self-heals on a dev profile that had the bad key.
   - Ctrl+Tab under WebView2; light-theme + palette screenshots.
+
+- **2026-08-02 23:35** - Session resumed per the stop-point entry. Base
+  verified green (npm 120, cargo 15 suites, clean tree). M5 redaction
+  UI landed per DECISIONS 019: `redactions` in EditCore with
+  add/remove-redaction commands (undoable, sidecar field with parse
+  default, crash-safe), Redact tool (drag rect; placeholders can't
+  mount it so only real source pages are markable), RedactionLayer
+  pending visual designed around the screenshot test - red diagonal
+  hatch + dashed border + "REDACTS ON SAVE" label + × unmark control,
+  content visibly NOT removed, never a black box. Save is the commit
+  gesture: a native warning dialog counts the regions and names the
+  irreversibility; declining aborts the save entirely. Toolbar shows a
+  persistent "N regions marked - content is permanently removed when
+  you save" note. Refusal surfacing: new lib/pdf-error.ts maps every
+  PdfError kind to an actionable message with Unsupported.feature
+  passed through VERBATIM (the engine's channel-naming refusals are
+  written for users); showError native dialog; every save entry point
+  (Save, Save As, close-prompt, extract, split, merge) now catches -
+  previously `void saveDocument(path)` swallowed rejections silently.
+  Redaction saves take the structural rebase path so the reloaded
+  bitmap proves what the file now contains. Tests: mark/unmark/undo/
+  redo, sidecar round-trip + legacy default, error-mapper verbatim +
+  never-raw. Gate green with pipefail both sides: cargo 15 suites,
+  clippy -D warnings, fmt, deny; npm test 125, lint, typecheck.
+  NOT verified by hand (no synthetic input): drag-marking in the live
+  app, the confirm/refusal dialogs on screen - manual checklist.
