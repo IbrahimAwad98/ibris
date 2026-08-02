@@ -492,3 +492,42 @@ what it has done.
 content changed on disk. Declining the confirmation aborts saves of
 unrelated edits too; the user unmarks regions (undoable, ×) to save
 without redacting.
+
+---
+
+## 020 - OCR re-evaluated (2026-08), deferred again with reasons
+
+**Decided:** OCR stays deferred. This is the honest re-visit that
+decision 018 promised, not a rubber stamp — the packaging landscape
+was checked again and the conclusion stands.
+
+**What was evaluated:**
+
+- *Tesseract via `tesseract-sys`* (the 018 plan): on Windows this
+  still means a vcpkg toolchain build of tesseract + leptonica —
+  there are no official pinned prebuilt binaries to fetch the way
+  `scripts/get-pdfium.ps1` fetches PDFium. A vcpkg build is not a
+  reproducible pinned fetch; it is a compiler run whose output varies
+  with vcpkg baseline state. The bar set for this project (pin a
+  release artefact or don't ship it) is still not clearable without
+  us becoming the builder and distributor of those binaries — a
+  packaging project of its own, exactly as 018 said.
+- *Pure-Rust engines, new since 018 was written:* `ocrs` (MIT/
+  Apache-2.0, models auto-downloaded) is explicitly an early preview
+  and supports the Latin alphabet only — disqualifying for a PDF
+  editor whose own fixture set includes CJK documents. `oar-ocr`
+  (PP-OCR model family) covers more scripts but brings an ML runtime
+  and a model-distribution story that needs its own licence and
+  pinning review. Promising direction, immature today.
+
+**Why deferral is right:** the OCR feature is not just an engine
+call — it is engine + invisible text layer written back into the PDF
+(text render mode 3, positioned at word boxes) + fixtures + a
+language-coverage story. Half-shipping a Latin-only preview engine
+under a feature users read as "make my scans searchable" fails the
+same honesty test that redaction's black-box ban encodes.
+
+**Trigger to revisit:** a pure-Rust engine with CJK support and
+pinned, permissively-licensed models — or official prebuilt Tesseract
+Windows artefacts. Either clears the reproducible-fetch bar and makes
+OCR an ordinary milestone.
