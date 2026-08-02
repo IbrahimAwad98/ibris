@@ -475,3 +475,45 @@ at the bottom. Branch per milestone; nothing pushed.
   typecheck. NOT verified by hand (no synthetic input): clicking a
   run in the live app, editor sizing/typing, refusal dialog on
   screen - manual checklist.
+
+- **2026-08-03 00:55** - **SESSION STOP POINT (planned, not limit).**
+  M6a works end to end; per instructions, widening stops here. Final
+  state: everything pushed, full gate green. Branches stacked on main:
+  feat/m4-signatures ⊂ feat/m5-redaction ⊂ feat/m6a-text-edit — merging
+  m6a to main brings all three; merge in order or merge m6a alone.
+  Disk at the boundary: cargo-target 8.2 GB, D: 53.4 GB free - fine.
+
+  DONE this session: M5 redaction UI (DECISIONS 019 - pending hatched
+  marks, save-gated commit, verbatim refusal surfacing; save errors no
+  longer swallowed anywhere); OCR honestly re-evaluated and deferred
+  (DECISIONS 020, revisit trigger named); M6a text editing complete
+  (DECISIONS 021 - glyph-path gate authoritative, overlay patches,
+  always-on verify; refusal tests written and passed first).
+
+  NEXT SESSION, in order:
+  1. Manual checklist below - much of M5/M6a needs human hands before
+     merging to main is honest.
+  2. Consider PRs: feat/m5-redaction and feat/m6a-text-edit -> main
+     (user decides; never merged autonomously).
+  3. M6b (subset extension) needs its own plan per M6-PLAN §3 - do NOT
+     start it without a written plan checkpoint.
+  4. OCR revisit only if the 020 trigger is met.
+
+  FIRST COMMANDS on resume: git status && npm test -- --run, then
+  cd src-tauri && cargo test. Read DECISIONS 019-021 before touching
+  redaction or text-edit code.
+
+  MANUAL CHECKLIST (adds to the accumulated list above):
+  - Redact tool: drag a region, see the hatched pending mark + toolbar
+    note, × removes it, undo/redo works.
+  - Ctrl+S with pending redactions: warning dialog counts regions;
+    Cancel aborts the whole save; confirm produces a file whose text
+    is gone (spot-check with Edge/Acrobat text selection).
+  - Redaction refusal: redact text that also lives in a form field or
+    bookmark - the error dialog must name the channel, not "error".
+  - Edit text tool: click the "Hello world" line in
+    tests/fixtures/subset-font.pdf (copy it first), type "Hexed" -
+    refusal dialog names 'x'; type "Held word" - pending patch shows,
+    save rebases and the page bitmap shows the new text.
+  - Editor UX judgement call: patch/editor font sizing at zoom levels,
+    rotated pages (expected non-WYSIWYG, M6-PLAN).
