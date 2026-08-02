@@ -52,6 +52,26 @@ export interface PendingRedaction {
   rect: { x: number; y: number; width: number; height: number };
 }
 
+/**
+ * A pending in-place text edit (M6a), keyed in `textEdits` by
+ * `"<pageIndex>:<objectIndex>"`. Nothing touches the file until save;
+ * the engine re-verifies `original` and the glyph gate then.
+ */
+export interface TextEditEntry {
+  pageIndex: number;
+  objectIndex: number;
+  /** The object's text in the file — the engine refuses a stale edit. */
+  original: string;
+  /** The replacement text (already glyph-checked at confirm time). */
+  text: string;
+  /** Object bounds in page points (top-left), for the pending overlay. */
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+/** The `textEdits` key for a page/object pair. */
+export const textEditKey = (pageIndex: number, objectIndex: number): string =>
+  `${pageIndex}:${objectIndex}`;
+
 /** The pageOrder entry referencing `inserts[k]`. */
 export const insertRef = (k: number): number => -(k + 1);
 /** Inverse of {@link insertRef}; null for ordinary source pages. */
@@ -112,6 +132,17 @@ export type CommandRecord =
   | {
       id: string;
       label: string;
+      type: "edit-text";
+      /** null = no pending edit for this object (the file's own text). */
+      payload: {
+        key: string;
+        before: TextEditEntry | null;
+        after: TextEditEntry | null;
+      };
+    }
+  | {
+      id: string;
+      label: string;
       type: "add-redaction";
       payload: { redaction: PendingRedaction };
     }
@@ -155,6 +186,8 @@ interface EditCore {
   flattenForms: boolean;
   /** Regions marked for redaction, pending until a confirmed save (M5). */
   redactions: Record<string, PendingRedaction>;
+  /** Pending in-place text edits by `textEditKey` (M6a). */
+  textEdits: Record<string, TextEditEntry>;
 }
 
 function applyRecord(core: EditCore, record: CommandRecord): EditCore {
@@ -190,6 +223,15 @@ function applyRecord(core: EditCore, record: CommandRecord): EditCore {
     }
     case "flatten-forms":
       return { ...core, flattenForms: record.payload.after };
+    case "edit-text": {
+      const textEdits = { ...core.textEdits };
+      if (record.payload.after === null) {
+        delete textEdits[record.payload.key];
+      } else {
+        textEdits[record.payload.key] = record.payload.after;
+      }
+      return { ...core, textEdits };
+    }
     case "add-redaction": {
       const r = record.payload.redaction;
       return { ...core, redactions: { ...core.redactions, [r.id]: r } };
@@ -227,6 +269,7 @@ function invertRecord(record: CommandRecord): CommandRecord {
     case "set-page-order":
     case "rotate-pages":
     case "set-field":
+    case "edit-text":
     case "flatten-forms":
       return {
         ...record,
@@ -298,6 +341,7 @@ function core(state: DocumentState): EditCore {
     fieldValues: state.fieldValues,
     flattenForms: state.flattenForms,
     redactions: state.redactions,
+    textEdits: state.textEdits,
   };
 }
 
@@ -309,6 +353,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   fieldValues: {},
   flattenForms: false,
   redactions: {},
+  textEdits: {},
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -379,6 +424,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       fieldValues: {},
       flattenForms: false,
       redactions: {},
+      textEdits: {},
       commands: [],
       cursor: 0,
       savedCursor: 0,
@@ -397,6 +443,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       fieldValues,
       flattenForms,
       redactions,
+      textEdits,
       commands,
       cursor,
       savedCursor,
@@ -410,6 +457,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       fieldValues,
       flattenForms,
       redactions,
+      textEdits,
       commands,
       cursor,
       savedCursor,
@@ -493,6 +541,21 @@ export function setField(
     type: "set-field",
     label,
     payload: { name, before, after },
+  };
+}
+
+/** Pending in-place text edit for one object (M6a); `after` null reverts
+ * the object to its file text. */
+export function editText(
+  key: string,
+  before: TextEditEntry | null,
+  after: TextEditEntry | null,
+): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "edit-text",
+    label: after === null ? "Revert text edit" : "Edit text",
+    payload: { key, before, after },
   };
 }
 

@@ -440,3 +440,38 @@ at the bottom. Branch per milestone; nothing pushed.
   model-licensing/pinning review. Deferred again with the full
   reasoning and a concrete revisit trigger in DECISIONS 020. M5 is
   hereby COMPLETE as redaction-only; proceeding to M6a.
+
+- **2026-08-03 00:45** - M6a landed per M6-PLAN.md, refusal path proven
+  FIRST as instructed. New fixture subset-font.pdf: a synthetic
+  embedded TrueType (built from scratch via fontTools -
+  gen-subset-font-fixture.py; fonttools pip-installed as a dev-only
+  script tool, not a shipped dependency) whose glyph set is exactly
+  {H,e,l,o,w,r,d,space} under "Hello world". Engine: pdf/edit_text.rs -
+  list_text_objects (safe API, decision-009 geometry), check (dry-run
+  glyph gate on a throwaway load), apply (staleness check against
+  `before`, GetGlyphPath gate, SetText, GenerateContent, extract-back),
+  verify (exact per-object text comparison of edited pages re-parsed
+  from final bytes BEFORE the atomic rename, always-on). Load-bearing
+  discovery recorded in DECISIONS 021: for simple fonts extraction
+  round-trips through the ENCODING even when the glyph is missing, so
+  extract-back alone would accept tofu - GetGlyphPath is the
+  authoritative gate, extract-back the second layer. Six engine tests,
+  refusals first: missing glyph refuses naming 'x' + file
+  byte-identical; check names every missing char and no present ones;
+  stale before refuses; subset-only edit lands + survives reopen;
+  unrelated text on a multi-object page untouched; same-page
+  edit+redact refused (as is flatten+edit, any page - one
+  content-rewriting feature per save keeps verification exact).
+  Frontend: edit-text tool, EditTextLayer (click -> inline editor
+  primed with object text; confirm runs the engine dry-run and
+  surfaces refusals verbatim; pending edits are opaque paper patches
+  with dashed amber outline - FormLayer pattern, decision 021 chose
+  overlay+rebase over live viewing-doc mutation), edit-text command
+  (set-field shape: after=null reverts; re-edit chains), sidecar
+  textEdits with parse default, structural save + rebase clears.
+  M6-PLAN hard boundaries honoured: no reflow, one object at a time,
+  no scope widening. Gate green with pipefail both sides: cargo 54
+  tests / 16 suites, clippy -D warnings, fmt, deny; npm 127, lint,
+  typecheck. NOT verified by hand (no synthetic input): clicking a
+  run in the live app, editor sizing/typing, refusal dialog on
+  screen - manual checklist.

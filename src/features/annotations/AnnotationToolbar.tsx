@@ -20,6 +20,12 @@ const TOOLS: { id: Tool; label: string; title: string }[] = [
     title:
       "Mark a region for redaction — content is permanently removed when you save",
   },
+  {
+    id: "edit-text",
+    label: "Edit text",
+    title:
+      "Edit a text line in place (only characters the document's font already contains)",
+  },
 ];
 
 const STAMPS: StampName[] = ["approved", "rejected", "draft", "confidential"];
@@ -59,7 +65,7 @@ export function AnnotationToolbar() {
           {" — content is permanently removed when you save"}
         </span>
       )}
-      {tool !== "select" && tool !== "redact" && (
+      {tool !== "select" && tool !== "redact" && tool !== "edit-text" && (
         <span className="annot-settings">
           <input
             type="color"

@@ -15,7 +15,8 @@ export type Tool =
   | "line"
   | "arrow"
   | "stamp"
-  | "redact";
+  | "redact"
+  | "edit-text";
 
 export interface ToolSettings {
   color: string;
@@ -38,6 +39,8 @@ const DEFAULTS: Record<Tool, ToolSettings> = {
   // Settings are unused: pending marks have one fixed look (never a
   // black box) so a screenshot can't pass for a completed redaction.
   redact: { color: "#c62828", opacity: 1, strokeWidth: 2 },
+  // Settings unused: the editor takes the page's own text as it is.
+  "edit-text": { color: "#000000", opacity: 1, strokeWidth: 2 },
 };
 
 export interface ToolState {

@@ -36,6 +36,26 @@ export interface RedactRegion {
   rect: { x: number; y: number; width: number; height: number };
 }
 
+/** One editable text object on a page (M6a). Geometry in page points,
+ * top-left origin, relative to the visible box. */
+export interface TextObjectInfo {
+  objectIndex: number;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** One in-place text replacement at save (M6a); `before` is the object's
+ * file text — the engine refuses if the file no longer says that. */
+export interface TextEditWire {
+  pageIndex: number;
+  objectIndex: number;
+  before: string;
+  after: string;
+}
+
 export type FieldWrite =
   | { kind: "text"; name: string; value: string }
   | { kind: "checkbox"; name: string; checked: boolean }
@@ -209,6 +229,28 @@ export async function searchRange(
   });
 }
 
+/** Enumerates a page's text objects for the edit tool (M6a). */
+export async function listTextObjects(
+  docId: number,
+  pageIndex: number,
+): Promise<TextObjectInfo[]> {
+  return invoke<TextObjectInfo[]>("list_text_objects", { docId, pageIndex });
+}
+
+/**
+ * Glyph-gate dry run for one text edit (M6a): resolves when the font can
+ * represent `after`; rejects with `Unsupported` naming the missing
+ * characters. Writes nothing anywhere.
+ */
+export async function checkTextEdit(
+  path: string,
+  pageIndex: number,
+  objectIndex: number,
+  after: string,
+): Promise<void> {
+  await invoke("check_text_edit", { path, pageIndex, objectIndex, after });
+}
+
 export async function getOutline(docId: number): Promise<OutlineNode[]> {
   return invoke<OutlineNode[]>("get_outline", { docId });
 }
@@ -250,6 +292,7 @@ export async function saveDocument(
   fieldValues: FieldWrite[] = [],
   flatten = false,
   redactions: RedactRegion[] = [],
+  textEdits: TextEditWire[] = [],
 ): Promise<void> {
   await invoke("save_document", {
     srcPath,
@@ -262,6 +305,7 @@ export async function saveDocument(
     fieldValues,
     flatten,
     redactions,
+    textEdits,
   });
 }
 

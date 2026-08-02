@@ -1,5 +1,6 @@
 pub mod annot;
 pub mod dark;
+pub mod edit_text;
 pub mod engine;
 pub mod error;
 pub mod form;

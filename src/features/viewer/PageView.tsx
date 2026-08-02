@@ -19,6 +19,7 @@ import {
   sweepInFlight,
   tileCache,
 } from "./page-cache";
+import { EditTextLayer } from "./EditTextLayer";
 import { FormLayer } from "./FormLayer";
 import { SearchHighlights } from "./SearchHighlights";
 import { TextLayer } from "./TextLayer";
@@ -200,6 +201,7 @@ export function PageView({
         <FormLayer pageIndex={pageIndex} scale={scale} />
         <AnnotationLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
         <RedactionLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
+        <EditTextLayer docId={docId} pageIndex={pageIndex} scale={scale} />
         <InteractionLayer
           pageIndex={pageIndex}
           pagePt={pagePt}
