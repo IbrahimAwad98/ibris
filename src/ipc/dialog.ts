@@ -1,6 +1,6 @@
 // Native dialogs; the plugin API is the sanctioned invoke path, kept in
 // src/ipc/ like every other IPC surface.
-import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
 
 /** Native file picker filtered to PDFs; null when the user cancels. */
 export async function pickPdf(): Promise<string | null> {
@@ -21,6 +21,16 @@ export async function pickPdfs(): Promise<string[]> {
   return typeof picked === "string" ? [picked] : [];
 }
 
+/** Native picker for a signature image. PNG only — that is what the
+ * engine embeds (image crate built with the png feature alone). */
+export async function pickPngImage(): Promise<string | null> {
+  const picked = await open({
+    multiple: false,
+    filters: [{ name: "PNG images", extensions: ["png"] }],
+  });
+  return typeof picked === "string" ? picked : null;
+}
+
 /** Native save-as picker; null when the user cancels. */
 export async function pickSavePath(
   defaultPath?: string,
@@ -29,6 +39,11 @@ export async function pickSavePath(
     defaultPath,
     filters: [{ name: "PDF documents", extensions: ["pdf"] }],
   });
+}
+
+/** Native error box — for failures the user must see, not dismiss-and-miss. */
+export async function showError(text: string, title: string): Promise<void> {
+  await message(text, { title, kind: "error" });
 }
 
 /** Native yes/no question; `okLabel` names the destructive choice. */

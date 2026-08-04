@@ -144,6 +144,21 @@ export function AnnotationShape({
           {sel}
         </>
       );
+    case "image":
+      return (
+        <>
+          <image
+            href={a.dataUrl}
+            x={a.rect.x}
+            y={a.rect.y}
+            width={a.rect.width}
+            height={a.rect.height}
+            opacity={a.opacity}
+            preserveAspectRatio="none"
+          />
+          {sel}
+        </>
+      );
     case "stamp": {
       const { x, y, width, height } = a.rect;
       return (
@@ -259,6 +274,7 @@ function bounds(a: Annotation): { x: number; y: number; width: number; height: n
     case "rect":
     case "ellipse":
     case "stamp":
+    case "image":
       return a.rect;
     case "line":
     case "arrow":

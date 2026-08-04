@@ -2,15 +2,19 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Annotation } from "../lib/annotations";
 import {
   addAnnotation,
+  addRedaction,
+  editText,
   insertPages,
   insertRef,
   MAX_STACK,
   modifyAnnotation,
   removeAnnotation,
+  removeRedaction,
   rotatePages,
   setField,
   setFlattenForms,
   setPageOrder,
+  textEditKey,
   useDocumentStore,
 } from "./document-store";
 
@@ -49,6 +53,8 @@ describe("reopened annotations (M2-PLAN §8)", () => {
         inserts: [],
         fieldValues: {},
         flattenForms: false,
+        redactions: {},
+        textEdits: {},
         commands: [],
         cursor: 0,
         savedCursor: 0,
@@ -143,6 +149,80 @@ describe("form fields (M4)", () => {
     expect(useDocumentStore.getState().flattenForms).toBe(true);
     useDocumentStore.getState().undo();
     expect(useDocumentStore.getState().flattenForms).toBe(false);
+  });
+});
+
+describe("pending redactions (M5)", () => {
+  const region = {
+    id: "r1",
+    pageIndex: 1,
+    rect: { x: 10, y: 20, width: 100, height: 14 },
+  };
+
+  it("mark, undo, redo — a pending mark is fully undoable", () => {
+    const s = useDocumentStore.getState;
+    s().execute(addRedaction(region));
+    expect(s().redactions["r1"]).toEqual(region);
+    expect(s().isDirty()).toBe(true);
+
+    s().undo();
+    expect(s().redactions["r1"]).toBeUndefined();
+    expect(s().isDirty()).toBe(false);
+
+    s().redo();
+    expect(s().redactions["r1"]).toEqual(region);
+  });
+
+  it("unmark round-trips through undo with the full region", () => {
+    const s = useDocumentStore.getState;
+    s().execute(addRedaction(region));
+    s().execute(removeRedaction(region));
+    expect(s().redactions["r1"]).toBeUndefined();
+
+    s().undo();
+    expect(s().redactions["r1"]).toEqual(region);
+  });
+});
+
+describe("pending text edits (M6a)", () => {
+  const entry = {
+    pageIndex: 0,
+    objectIndex: 3,
+    original: "Hello world",
+    text: "Held word",
+    rect: { x: 72, y: 80, width: 120, height: 18 },
+  };
+  const key = textEditKey(0, 3);
+
+  it("edit, undo, redo — a pending edit is fully undoable", () => {
+    const s = useDocumentStore.getState;
+    s().execute(editText(key, null, entry));
+    expect(s().textEdits[key]).toEqual(entry);
+    expect(s().isDirty()).toBe(true);
+
+    s().undo();
+    expect(s().textEdits[key]).toBeUndefined();
+    expect(s().isDirty()).toBe(false);
+
+    s().redo();
+    expect(s().textEdits[key]).toEqual(entry);
+  });
+
+  it("re-editing chains and a null after reverts to the file text", () => {
+    const s = useDocumentStore.getState;
+    s().execute(editText(key, null, entry));
+    const second = { ...entry, text: "Hold world" };
+    s().execute(editText(key, entry, second));
+    expect(s().textEdits[key]).toEqual(second);
+
+    // Typing the file's own text back drops the entry entirely.
+    s().execute(editText(key, second, null));
+    expect(s().textEdits[key]).toBeUndefined();
+
+    s().undo();
+    expect(s().textEdits[key]).toEqual(second);
+    s().undo();
+    expect(s().textEdits[key]).toEqual(entry);
   });
 });
 
@@ -254,6 +334,8 @@ describe("serialisation", () => {
         inserts: [],
         fieldValues: {},
         flattenForms: false,
+        redactions: {},
+        textEdits: {},
         commands: wire.commands,
         cursor: wire.cursor,
         savedCursor: 0,

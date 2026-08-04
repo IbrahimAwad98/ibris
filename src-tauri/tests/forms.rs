@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use ibris_lib::pdf::form::FieldWrite;
+use ibris_lib::pdf::save::SaveRequest;
 use ibris_lib::pdf::service::PdfService;
 
 fn fixture(name: &str) -> PathBuf {
@@ -47,13 +48,12 @@ async fn save_fills(service: &PdfService, path: &PathBuf, flatten: bool) {
         .save_document(
             path.clone(),
             path.clone(),
-            vec![0],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            fills(),
-            flatten,
+            SaveRequest {
+                order: vec![0],
+                field_values: fills(),
+                flatten: flatten,
+                ..Default::default()
+            },
         )
         .await
         .expect("form save failed");

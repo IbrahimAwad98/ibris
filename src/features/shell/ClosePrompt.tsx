@@ -1,4 +1,6 @@
+import { showError } from "../../ipc/dialog";
 import { sidecarDelete } from "../../ipc/sidecar";
+import { saveErrorMessage } from "../../lib/pdf-error";
 import {
   cancelSidecarWrite,
   saveDocument,
@@ -20,7 +22,10 @@ export function ClosePrompt() {
   const dismiss = () => useUiStore.getState().setClosePrompt(null);
   const save = async () => {
     dismiss();
-    const saved = await saveDocument(tab.path).catch(() => false);
+    const saved = await saveDocument(tab.path).catch((e: unknown) => {
+      void showError(saveErrorMessage(e), "Save failed");
+      return false; // the tab stays open; nothing was written
+    });
     if (saved) void useTabsStore.getState().closeTab(tabId);
   };
   const discard = () => {
