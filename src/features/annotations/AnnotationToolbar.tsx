@@ -1,32 +1,46 @@
+import { Fragment } from "react";
 import type { StampName } from "../../lib/annotations";
 import { useDocumentStore } from "../../state/document-store";
 import { useToolStore, type Tool } from "../../state/tool-store";
 
-const TOOLS: { id: Tool; label: string; title: string }[] = [
-  { id: "select", label: "Select", title: "Select and move annotations" },
-  { id: "highlight", label: "Highlight", title: "Highlight selected text" },
-  { id: "underline", label: "Underline", title: "Underline selected text" },
-  { id: "strikeout", label: "Strike", title: "Strike through selected text" },
-  { id: "ink", label: "Ink", title: "Freehand pen" },
-  { id: "note", label: "Note", title: "Place a text note" },
-  { id: "rect", label: "Rect", title: "Draw a rectangle" },
-  { id: "ellipse", label: "Ellipse", title: "Draw an ellipse" },
-  { id: "line", label: "Line", title: "Draw a line" },
-  { id: "arrow", label: "Arrow", title: "Draw an arrow" },
-  { id: "stamp", label: "Stamp", title: "Place a stamp" },
-  {
-    id: "redact",
-    label: "Redact",
-    title:
-      "Mark a region for redaction — content is permanently removed when you save",
-  },
-  {
-    id: "edit-text",
-    label: "Edit text",
-    title:
-      "Edit a text line in place (only characters the document's font already contains)",
-  },
+interface ToolButton {
+  id: Tool;
+  label: string;
+  title: string;
+}
+
+// Redact is deliberately NOT in these groups: permanently removing content
+// is a different category of act than drawing, and the chrome must say so.
+const GROUPS: ToolButton[][] = [
+  [{ id: "select", label: "Select", title: "Select and move annotations" }],
+  [
+    { id: "highlight", label: "Highlight", title: "Highlight selected text" },
+    { id: "underline", label: "Underline", title: "Underline selected text" },
+    { id: "strikeout", label: "Strike", title: "Strike through selected text" },
+    { id: "ink", label: "Ink", title: "Freehand pen" },
+    { id: "note", label: "Note", title: "Place a text note" },
+    { id: "rect", label: "Rect", title: "Draw a rectangle" },
+    { id: "ellipse", label: "Ellipse", title: "Draw an ellipse" },
+    { id: "line", label: "Line", title: "Draw a line" },
+    { id: "arrow", label: "Arrow", title: "Draw an arrow" },
+    { id: "stamp", label: "Stamp", title: "Place a stamp" },
+  ],
+  [
+    {
+      id: "edit-text",
+      label: "Edit text",
+      title:
+        "Edit a text line in place (only characters the document's font already contains)",
+    },
+  ],
 ];
+
+const REDACT: ToolButton = {
+  id: "redact",
+  label: "Redact",
+  title:
+    "Mark a region for redaction — content is permanently removed when you save",
+};
 
 const STAMPS: StampName[] = ["approved", "rejected", "draft", "confidential"];
 
@@ -47,16 +61,31 @@ export function AnnotationToolbar() {
 
   return (
     <div className="annot-toolbar">
-      {TOOLS.map((t) => (
-        <button
-          key={t.id}
-          className={tool === t.id ? "annot-tool active" : "annot-tool"}
-          title={t.title}
-          onClick={() => setTool(t.id)}
-        >
-          {t.label}
-        </button>
+      {GROUPS.map((group, gi) => (
+        <Fragment key={gi}>
+          {gi > 0 && <span className="annot-sep" />}
+          {group.map((t) => (
+            <button
+              key={t.id}
+              className={tool === t.id ? "annot-tool active" : "annot-tool"}
+              title={t.title}
+              onClick={() => setTool(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </Fragment>
       ))}
+      <span className="annot-sep danger" />
+      <button
+        className={
+          tool === "redact" ? "annot-tool danger active" : "annot-tool danger"
+        }
+        title={REDACT.title}
+        onClick={() => setTool(REDACT.id)}
+      >
+        {REDACT.label}
+      </button>
       {pendingRedactions > 0 && (
         <span className="redact-pending-note" role="status">
           {pendingRedactions === 1
