@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { moveSlots, removeSlots } from "../../lib/page-ops";
+import { appCommands } from "../shell/commands";
 import { setPageOrder, useDocumentStore } from "../../state/document-store";
 import { useUiStore } from "../../state/ui-store";
 import { useViewerStore } from "../../state/viewer-store";
+
+// Registry commands surfaced here so they exist outside the palette.
+const PAGE_COMMAND_IDS = [
+  "insert-pages",
+  "extract-page",
+  "split-doc",
+  "merge-pdfs",
+];
 
 /** Thumbnail sidebar: click to navigate, ctrl/shift multi-select, drag to
  * reorder (a command), delete selection (a command). */
@@ -66,8 +75,34 @@ export function ThumbnailPanel() {
     );
   };
 
+  const pageCmds = appCommands().filter((c) =>
+    PAGE_COMMAND_IDS.includes(c.id),
+  );
+
   return (
     <div style={{ padding: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          paddingBottom: 8,
+          borderBottom: "1px solid var(--border-deep)",
+          marginBottom: 8,
+        }}
+      >
+        {pageCmds.map((c) => (
+          <button
+            key={c.id}
+            className="btn-secondary"
+            style={{ fontSize: 11, padding: "3px 8px", textAlign: "left" }}
+            disabled={!(c.enabled?.() ?? true)}
+            onClick={() => c.run()}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
       {selected.length > 0 && (
         <div
           style={{
