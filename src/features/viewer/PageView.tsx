@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { nextRequestId, renderTile } from "../../ipc/pdf";
 import { AnnotationLayer } from "../annotations/AnnotationLayer";
 import { InteractionLayer } from "../annotations/InteractionLayer";
+import { RedactionLayer } from "../annotations/RedactionLayer";
 import type { Rect, Rotation, Size } from "../../lib/coords";
 import {
   displayRectToPageRect,
@@ -18,6 +19,7 @@ import {
   sweepInFlight,
   tileCache,
 } from "./page-cache";
+import { EditTextLayer } from "./EditTextLayer";
 import { FormLayer } from "./FormLayer";
 import { SearchHighlights } from "./SearchHighlights";
 import { TextLayer } from "./TextLayer";
@@ -198,6 +200,8 @@ export function PageView({
         <SearchHighlights pageIndex={pageIndex} scale={scale} />
         <FormLayer pageIndex={pageIndex} scale={scale} />
         <AnnotationLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
+        <RedactionLayer pageIndex={pageIndex} pagePt={pagePt} scale={scale} />
+        <EditTextLayer docId={docId} pageIndex={pageIndex} scale={scale} />
         <InteractionLayer
           pageIndex={pageIndex}
           pagePt={pagePt}

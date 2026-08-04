@@ -39,6 +39,39 @@ export interface InsertedPage {
   height: number;
 }
 
+/**
+ * A region marked for redaction but not yet applied (M5). Purely a pending
+ * mark until save: the file on disk is untouched, the mark is undoable, and
+ * the engine applies-and-verifies it only when the user confirms a save.
+ * Geometry is page points, top-left origin, keyed to *source* pages —
+ * the same conventions as annotations and the RedactRegion wire shape.
+ */
+export interface PendingRedaction {
+  id: string;
+  pageIndex: number;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * A pending in-place text edit (M6a), keyed in `textEdits` by
+ * `"<pageIndex>:<objectIndex>"`. Nothing touches the file until save;
+ * the engine re-verifies `original` and the glyph gate then.
+ */
+export interface TextEditEntry {
+  pageIndex: number;
+  objectIndex: number;
+  /** The object's text in the file — the engine refuses a stale edit. */
+  original: string;
+  /** The replacement text (already glyph-checked at confirm time). */
+  text: string;
+  /** Object bounds in page points (top-left), for the pending overlay. */
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+/** The `textEdits` key for a page/object pair. */
+export const textEditKey = (pageIndex: number, objectIndex: number): string =>
+  `${pageIndex}:${objectIndex}`;
+
 /** The pageOrder entry referencing `inserts[k]`. */
 export const insertRef = (k: number): number => -(k + 1);
 /** Inverse of {@link insertRef}; null for ordinary source pages. */
@@ -99,6 +132,29 @@ export type CommandRecord =
   | {
       id: string;
       label: string;
+      type: "edit-text";
+      /** null = no pending edit for this object (the file's own text). */
+      payload: {
+        key: string;
+        before: TextEditEntry | null;
+        after: TextEditEntry | null;
+      };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "add-redaction";
+      payload: { redaction: PendingRedaction };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "remove-redaction";
+      payload: { redaction: PendingRedaction };
+    }
+  | {
+      id: string;
+      label: string;
       type: "insert-pages";
       /** `after` references `pages` via insertRef(base + i). Undo swaps
        * the orders; the registered pages stay (unreferenced entries are
@@ -128,6 +184,10 @@ interface EditCore {
   fieldValues: Record<string, FieldState>;
   /** Flatten fields + annotations into page content at the next save. */
   flattenForms: boolean;
+  /** Regions marked for redaction, pending until a confirmed save (M5). */
+  redactions: Record<string, PendingRedaction>;
+  /** Pending in-place text edits by `textEditKey` (M6a). */
+  textEdits: Record<string, TextEditEntry>;
 }
 
 function applyRecord(core: EditCore, record: CommandRecord): EditCore {
@@ -163,6 +223,24 @@ function applyRecord(core: EditCore, record: CommandRecord): EditCore {
     }
     case "flatten-forms":
       return { ...core, flattenForms: record.payload.after };
+    case "edit-text": {
+      const textEdits = { ...core.textEdits };
+      if (record.payload.after === null) {
+        delete textEdits[record.payload.key];
+      } else {
+        textEdits[record.payload.key] = record.payload.after;
+      }
+      return { ...core, textEdits };
+    }
+    case "add-redaction": {
+      const r = record.payload.redaction;
+      return { ...core, redactions: { ...core.redactions, [r.id]: r } };
+    }
+    case "remove-redaction": {
+      const redactions = { ...core.redactions };
+      delete redactions[record.payload.redaction.id];
+      return { ...core, redactions };
+    }
     case "insert-pages": {
       // Registration is idempotent (fixed positions), so redo after undo
       // and inverted records replay safely.
@@ -183,10 +261,15 @@ function invertRecord(record: CommandRecord): CommandRecord {
       return { ...record, type: "remove-annotation" };
     case "remove-annotation":
       return { ...record, type: "add-annotation" };
+    case "add-redaction":
+      return { ...record, type: "remove-redaction" };
+    case "remove-redaction":
+      return { ...record, type: "add-redaction" };
     case "modify-annotation":
     case "set-page-order":
     case "rotate-pages":
     case "set-field":
+    case "edit-text":
     case "flatten-forms":
       return {
         ...record,
@@ -257,6 +340,8 @@ function core(state: DocumentState): EditCore {
     inserts: state.inserts,
     fieldValues: state.fieldValues,
     flattenForms: state.flattenForms,
+    redactions: state.redactions,
+    textEdits: state.textEdits,
   };
 }
 
@@ -267,6 +352,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   inserts: [],
   fieldValues: {},
   flattenForms: false,
+  redactions: {},
+  textEdits: {},
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -336,6 +423,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       inserts: [],
       fieldValues: {},
       flattenForms: false,
+      redactions: {},
+      textEdits: {},
       commands: [],
       cursor: 0,
       savedCursor: 0,
@@ -353,6 +442,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       inserts,
       fieldValues,
       flattenForms,
+      redactions,
+      textEdits,
       commands,
       cursor,
       savedCursor,
@@ -365,6 +456,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       inserts,
       fieldValues,
       flattenForms,
+      redactions,
+      textEdits,
       commands,
       cursor,
       savedCursor,
@@ -448,6 +541,42 @@ export function setField(
     type: "set-field",
     label,
     payload: { name, before, after },
+  };
+}
+
+/** Pending in-place text edit for one object (M6a); `after` null reverts
+ * the object to its file text. */
+export function editText(
+  key: string,
+  before: TextEditEntry | null,
+  after: TextEditEntry | null,
+): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "edit-text",
+    label: after === null ? "Revert text edit" : "Edit text",
+    payload: { key, before, after },
+  };
+}
+
+/** Marks a region for redaction — a pending, undoable mark; nothing is
+ * removed until the user confirms a save (M5). */
+export function addRedaction(redaction: PendingRedaction): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "add-redaction",
+    label: "Mark region for redaction",
+    payload: { redaction },
+  };
+}
+
+/** Removes a pending redaction mark (M5). */
+export function removeRedaction(redaction: PendingRedaction): CommandRecord {
+  return {
+    id: crypto.randomUUID(),
+    type: "remove-redaction",
+    label: "Unmark redaction region",
+    payload: { redaction },
   };
 }
 

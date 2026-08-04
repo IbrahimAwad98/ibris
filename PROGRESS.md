@@ -304,3 +304,248 @@ at the bottom. Branch per milestone; nothing pushed.
   ceilings. Gate green: cargo 13 suites, npm 120, both full.
   UNTESTED by hand (no synthetic input): actual typing into overlay
   fields in the running app — on the manual checklist.
+
+- **2026-08-01 23:55** — Mid-session instruction executed: all four
+  branches merged to main via PRs #1-#4 (merge commits, no squash, no
+  rebase). Pre-check confirmed they were perfectly stacked (17 within 24
+  within 33 within 35 commits), so in-order merging needed no history
+  surgery. Full gate ran green on every branch before its merge and
+  once more on main (npm 120, cargo 13 suites, clippy/fmt/deny/lint/
+  typecheck, plus a production vite build). App-runs proof: npm run dev
+  on main, window came up, screenshot saved to
+  screenshots/main-post-merge.png (untracked) — it shows the restored
+  session tab with reopened annotations rendering through the editable
+  overlay and the active tool correctly reading Select on launch, live
+  confirmation of both the M2-gap fix and the Underline fix. Remote
+  branches deleted by the merges. Continuing M4 signature placement on
+  feat/m4-signatures.
+
+- **2026-08-02 00:30** - **M4 COMPLETE** (signature placement landed on
+  feat/m4-signatures; the forms half merged to main in PR #4).
+  Signature = picture, never "signing" (DECISIONS 017): ink tool for
+  drawn, PNG-from-file for image - a /Stamp whose appearance is an
+  appended image object (FPDFImageObj_SetBitmap + FPDFAnnot_AppendObject,
+  PDFium builds the /AP; we never also SetAP). Palette commands "Place
+  signature image..." (places centered on current page, natural aspect,
+  becomes a normal movable/deletable/undoable annotation) and "Draw
+  signature (ink)". image crate promoted dev->real dependency (png
+  feature only; licence gate unchanged); base64 hand-rolled both sides
+  rather than a new dependency. Engine test proves: verbatim data-URL
+  round-trip, suppression in the viewing document, and - after
+  byte-stripping IbrisData - not recovered but still DRAWN from the /AP
+  (visible read-only, per the 015 ladder). Gate green both sides
+  (cargo 14 suites, npm 120, clippy/fmt/deny/lint/typecheck, pipefail).
+  Manual checklist: transparency edge rendering in Acrobat/Edge,
+  overlay field typing, signature drag placement by hand.
+
+- **2026-08-02 01:10** - M5 redaction ENGINE landed (UI deliberately not
+  yet - engine-first so the safety-critical part is test-proven before
+  anything looks clickable; no UI exists, so nothing misleads). Design
+  per DECISIONS 018: refusal-first (metadata/outline/other-annotation/
+  form-value leaks and any embedded attachments fail the save with the
+  channel named - PDFium cannot rewrite those), whole-object removal of
+  intersecting text+images (over-redaction by design; nested Form
+  XObject content is refused, not silently erased), black marker box,
+  GenerateContent, and an ALWAYS-ON engine verification that re-parses
+  the final bytes and proves the regions extract no text and contain no
+  images before the atomic rename. Save wire refactored to a
+  SaveRequest struct (was 10 positional args) - all call sites and
+  tests migrated. Tests: extraction-absence proof (the mandated one),
+  full-page image redaction, refusal on a leaky annotation with the
+  file left byte-identical. OCR deferred with reasoning in 018
+  (Tesseract native build/packaging on Windows is its own project).
+  Gate green both sides: cargo 15 suites / 47 tests, npm 120,
+  clippy/fmt/deny/lint/typecheck, pipefail.
+
+- **2026-08-02 01:15** - **SESSION STOP POINT.** Final state: branch
+  feat/m5-redaction, everything pushed, full gate green. main carries
+  M0-M4 (PRs #1-#4, merge commits); feat/m4-signatures (M4 complete
+  incl. signature placement) and feat/m5-redaction are open branches
+  stacked on main in that order (m5 contains m4-signatures? NO - m5
+  branched from m4-signatures, so yes: m5 contains it; merge
+  m4-signatures first or just merge m5 which includes both).
+
+  DONE this session: DECISIONS 012-018; M2 read-only gap closed
+  (reopen editability with reconstruction fallback); M3 completed
+  (underline fix, reorder test, extract/split/merge, insert-from-file
+  with placeholders); M4 completed (forms read/fill/flatten/XFA banner,
+  signature placement); merges to main with app-runs proof; M6-PLAN.md;
+  M5 redaction engine with in-pipeline verification.
+
+  NEXT SESSION, in order:
+  1. M5 redaction UI + model: redaction tool (drag rect like the rect
+     tool), EditCore `redactions` list + add/remove commands, sidecar
+     field (parse default []), saveToPath passes them (wire param
+     already exists end to end), structural=true when redactions
+     present so the viewer rebase-reloads. Surface refusal errors
+     (PdfError::Unsupported.feature) verbatim in the save-error UI -
+     the messages are written for users.
+  2. M5 OCR slice: evaluate tesseract crate vs bundling libtesseract;
+     searchable text layer design; DECISIONS entry when the packaging
+     story is clear.
+  3. M6a per M6-PLAN.md (edit-text command, glyph gate, verification
+     extraction before rename).
+  4. Consider merging feat/m5-redaction -> main when its UI exists.
+
+  FIRST COMMANDS on resume: git status && npm test -- --run, then
+  cd src-tauri && cargo test. Read M6-PLAN.md and DECISIONS 018 before
+  touching M5 UI or M6.
+
+  MANUAL CHECKLIST (accumulated, needs human hands):
+  - Type into form overlay fields; tab order; combo/list selects.
+  - Place a signature image via the palette; drag it; save; reopen.
+  - Insert-from-file placeholders: drag-reorder them, save, verify the
+    rebase shows real pages.
+  - Extract/split/merge palette commands end to end with real paths.
+  - Third-party reader checks (Acrobat/Edge): our annotations render,
+    signature image transparency edges, filled form values visible,
+    flattened output.
+  - Underline-on-launch: confirmed fixed in the post-merge screenshot
+    (tool reads Select), but confirm the stale localStorage profile
+    also self-heals on a dev profile that had the bad key.
+  - Ctrl+Tab under WebView2; light-theme + palette screenshots.
+
+- **2026-08-02 23:35** - Session resumed per the stop-point entry. Base
+  verified green (npm 120, cargo 15 suites, clean tree). M5 redaction
+  UI landed per DECISIONS 019: `redactions` in EditCore with
+  add/remove-redaction commands (undoable, sidecar field with parse
+  default, crash-safe), Redact tool (drag rect; placeholders can't
+  mount it so only real source pages are markable), RedactionLayer
+  pending visual designed around the screenshot test - red diagonal
+  hatch + dashed border + "REDACTS ON SAVE" label + × unmark control,
+  content visibly NOT removed, never a black box. Save is the commit
+  gesture: a native warning dialog counts the regions and names the
+  irreversibility; declining aborts the save entirely. Toolbar shows a
+  persistent "N regions marked - content is permanently removed when
+  you save" note. Refusal surfacing: new lib/pdf-error.ts maps every
+  PdfError kind to an actionable message with Unsupported.feature
+  passed through VERBATIM (the engine's channel-naming refusals are
+  written for users); showError native dialog; every save entry point
+  (Save, Save As, close-prompt, extract, split, merge) now catches -
+  previously `void saveDocument(path)` swallowed rejections silently.
+  Redaction saves take the structural rebase path so the reloaded
+  bitmap proves what the file now contains. Tests: mark/unmark/undo/
+  redo, sidecar round-trip + legacy default, error-mapper verbatim +
+  never-raw. Gate green with pipefail both sides: cargo 15 suites,
+  clippy -D warnings, fmt, deny; npm test 125, lint, typecheck.
+  NOT verified by hand (no synthetic input): drag-marking in the live
+  app, the confirm/refusal dialogs on screen - manual checklist.
+
+- **2026-08-02 23:50** - OCR re-evaluated per instruction (not
+  rubber-stamped): Tesseract on Windows is still a vcpkg toolchain
+  build with no official pinned prebuilts - fails the get-pdfium.ps1
+  reproducible-fetch bar. New-since-018 pure-Rust engines checked:
+  ocrs is an early preview, Latin-only (disqualifying - our fixtures
+  include CJK); oar-ocr (PP-OCR) is promising but needs its own
+  model-licensing/pinning review. Deferred again with the full
+  reasoning and a concrete revisit trigger in DECISIONS 020. M5 is
+  hereby COMPLETE as redaction-only; proceeding to M6a.
+
+- **2026-08-03 00:45** - M6a landed per M6-PLAN.md, refusal path proven
+  FIRST as instructed. New fixture subset-font.pdf: a synthetic
+  embedded TrueType (built from scratch via fontTools -
+  gen-subset-font-fixture.py; fonttools pip-installed as a dev-only
+  script tool, not a shipped dependency) whose glyph set is exactly
+  {H,e,l,o,w,r,d,space} under "Hello world". Engine: pdf/edit_text.rs -
+  list_text_objects (safe API, decision-009 geometry), check (dry-run
+  glyph gate on a throwaway load), apply (staleness check against
+  `before`, GetGlyphPath gate, SetText, GenerateContent, extract-back),
+  verify (exact per-object text comparison of edited pages re-parsed
+  from final bytes BEFORE the atomic rename, always-on). Load-bearing
+  discovery recorded in DECISIONS 021: for simple fonts extraction
+  round-trips through the ENCODING even when the glyph is missing, so
+  extract-back alone would accept tofu - GetGlyphPath is the
+  authoritative gate, extract-back the second layer. Six engine tests,
+  refusals first: missing glyph refuses naming 'x' + file
+  byte-identical; check names every missing char and no present ones;
+  stale before refuses; subset-only edit lands + survives reopen;
+  unrelated text on a multi-object page untouched; same-page
+  edit+redact refused (as is flatten+edit, any page - one
+  content-rewriting feature per save keeps verification exact).
+  Frontend: edit-text tool, EditTextLayer (click -> inline editor
+  primed with object text; confirm runs the engine dry-run and
+  surfaces refusals verbatim; pending edits are opaque paper patches
+  with dashed amber outline - FormLayer pattern, decision 021 chose
+  overlay+rebase over live viewing-doc mutation), edit-text command
+  (set-field shape: after=null reverts; re-edit chains), sidecar
+  textEdits with parse default, structural save + rebase clears.
+  M6-PLAN hard boundaries honoured: no reflow, one object at a time,
+  no scope widening. Gate green with pipefail both sides: cargo 54
+  tests / 16 suites, clippy -D warnings, fmt, deny; npm 127, lint,
+  typecheck. NOT verified by hand (no synthetic input): clicking a
+  run in the live app, editor sizing/typing, refusal dialog on
+  screen - manual checklist.
+
+- **2026-08-03 00:55** - **SESSION STOP POINT (planned, not limit).**
+  M6a works end to end; per instructions, widening stops here. Final
+  state: everything pushed, full gate green. Branches stacked on main:
+  feat/m4-signatures ⊂ feat/m5-redaction ⊂ feat/m6a-text-edit — merging
+  m6a to main brings all three; merge in order or merge m6a alone.
+  Disk at the boundary: cargo-target 8.2 GB, D: 53.4 GB free - fine.
+
+  DONE this session: M5 redaction UI (DECISIONS 019 - pending hatched
+  marks, save-gated commit, verbatim refusal surfacing; save errors no
+  longer swallowed anywhere); OCR honestly re-evaluated and deferred
+  (DECISIONS 020, revisit trigger named); M6a text editing complete
+  (DECISIONS 021 - glyph-path gate authoritative, overlay patches,
+  always-on verify; refusal tests written and passed first).
+
+  NEXT SESSION, in order:
+  1. Manual checklist below - much of M5/M6a needs human hands before
+     merging to main is honest.
+  2. Consider PRs: feat/m5-redaction and feat/m6a-text-edit -> main
+     (user decides; never merged autonomously).
+  3. M6b (subset extension) needs its own plan per M6-PLAN §3 - do NOT
+     start it without a written plan checkpoint.
+  4. OCR revisit only if the 020 trigger is met.
+
+  FIRST COMMANDS on resume: git status && npm test -- --run, then
+  cd src-tauri && cargo test. Read DECISIONS 019-021 before touching
+  redaction or text-edit code.
+
+  MANUAL CHECKLIST (adds to the accumulated list above):
+  - Redact tool: drag a region, see the hatched pending mark + toolbar
+    note, × removes it, undo/redo works.
+  - Ctrl+S with pending redactions: warning dialog counts regions;
+    Cancel aborts the whole save; confirm produces a file whose text
+    is gone (spot-check with Edge/Acrobat text selection).
+  - Redaction refusal: redact text that also lives in a form field or
+    bookmark - the error dialog must name the channel, not "error".
+  - Edit text tool: click the "Hello world" line in
+    tests/fixtures/subset-font.pdf (copy it first), type "Hexed" -
+    refusal dialog names 'x'; type "Held word" - pending patch shows,
+    save rebases and the page bitmap shows the new text.
+  - Editor UX judgement call: patch/editor font sizing at zoom levels,
+    rotated pages (expected non-WYSIWYG, M6-PLAN).
+
+- **2026-08-04 22:45** — UI polish landed on feat/ui-polish (from the
+  screenshot audit): missing `--bg-panel` defined (f8e5693 — it was used
+  by five components and resolved to transparent, making form fields,
+  edit patches, and the page list render with no background); tool strip
+  regrouped with Redact pulled out of the drawing groups behind its own
+  danger-tinted separator, carried by the new `--danger` variable
+  (d9c4e0d); insert/extract/split/merge surfaced as Pages-sidebar
+  buttons riding the registry commands unchanged (3f75bb5); CLAUDE.md
+  stack table corrected — Tailwind and Immer were never installed
+  (89693d4).
+
+  FOLLOW-UP BUGS (logged, deliberately not fixed in the polish branch;
+  the audit session's original list was lost to context compaction —
+  item 1 is the one the user named, 2 and 3 re-derived and verified by
+  code reading this session):
+  1. **Form widgets leak across tabs.** `takeSnapshot`/`applySnapshot`
+     (tabs-store.ts) never save or restore `docForm`, which lives in
+     viewer-store. Switch from an AcroForm tab to any other tab:
+     FormLayer keeps rendering the previous document's widgets at their
+     old rects, and the XFA banner has the same hole. Fix: carry
+     `docForm` in the viewer slice of the tab snapshot.
+  2. **Blank sidebar panel when the Outline tab is active and the
+     document has none.** Sidebar hides the Outline tab button when
+     `outline.length === 0` but `sidebarTab` can still be "outline"
+     (kept on tab switch/open) — no tab shows active and the panel is
+     empty. Fix: fall back to "thumbnails" when the outline is absent.
+  3. **Form fields swallow pointer events regardless of active tool.**
+     Field boxes set `pointerEvents: auto` unless read-only/flatten, so
+     with ink/rect/redact active a drag that starts over a widget
+     focuses the field instead of drawing. Fix: gate field pointer
+     events on the select tool being active.

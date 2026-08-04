@@ -13,8 +13,8 @@ before adding a dependency or changing a structural choice.
 | --- | --- |
 | Shell | Tauri 2 |
 | Frontend | React 18 + TypeScript (strict) + Vite |
-| State | Zustand + Immer |
-| Styling | Tailwind CSS |
+| State | Zustand |
+| Styling | Plain CSS (variables in `src/App.css`), no framework |
 | Backend | Rust (stable toolchain) |
 | PDF engine | PDFium via `pdfium-render` |
 

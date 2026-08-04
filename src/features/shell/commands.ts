@@ -2,9 +2,17 @@
 // shortcut live here and nowhere else: the palette renders this list and
 // the global keydown handler dispatches from it, so the two can never
 // disagree. Do not bind a shortcut anywhere else.
-import { pickPdf, pickPdfs, pickSavePath } from "../../ipc/dialog";
+import {
+  pickPdf,
+  pickPdfs,
+  pickPngImage,
+  pickSavePath,
+  showError,
+} from "../../ipc/dialog";
+import { readFileAsDataUrl } from "../../ipc/fs";
 import { closeDocument, mergeDocuments, openDocument } from "../../ipc/pdf";
 import { siblingPartPath } from "../../lib/page-ops";
+import { saveErrorMessage } from "../../lib/pdf-error";
 import { eventMatches, parseShortcut } from "../../lib/shortcuts";
 import {
   saveDocument,
@@ -12,12 +20,24 @@ import {
   saveToPath,
 } from "../../state/annotation-io";
 import {
+  addAnnotation,
   insertPages,
   insertRef,
   removeAnnotation,
   setFlattenForms,
   useDocumentStore,
 } from "../../state/document-store";
+
+/** Natural pixel size of an image data URL (decoded by the browser). */
+function imageSize(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () =>
+      resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+    img.onerror = () => reject(new Error("image failed to decode"));
+    img.src = dataUrl;
+  });
+}
 import { useTabsStore } from "../../state/tabs-store";
 import { useToolStore } from "../../state/tool-store";
 import { useUiStore } from "../../state/ui-store";
@@ -40,6 +60,13 @@ export interface AppCommand {
   extraShortcuts?: string[];
   enabled?: () => boolean;
   run: () => void;
+}
+
+/** Every save path ends here on failure: the engine's refusal (e.g. a
+ * redaction blocked by a named leak channel) is shown verbatim, never a
+ * generic "something went wrong". */
+function reportSaveError(e: unknown): void {
+  void showError(saveErrorMessage(e), "Save failed");
 }
 
 const docOpen = () => useViewerStore.getState().docId !== null;
@@ -79,7 +106,7 @@ export function appCommands(): AppCommand[] {
       enabled: docOpen,
       run: () => {
         const path = activePath();
-        if (path) void saveDocument(path);
+        if (path) void saveDocument(path).catch(reportSaveError);
       },
     },
     {
@@ -91,7 +118,7 @@ export function appCommands(): AppCommand[] {
         const path = activePath();
         if (!path) return;
         void pickSavePath(path).then((target) => {
-          if (target) void saveToPath(path, target);
+          if (target) void saveToPath(path, target).catch(reportSaveError);
         });
       },
     },
@@ -122,6 +149,55 @@ export function appCommands(): AppCommand[] {
         if (a) useDocumentStore.getState().execute(removeAnnotation(a));
         setSelectedId(null);
       },
+    },
+    {
+      // Placement only: a picture of a signature, in no way cryptographic
+      // signing. The label must never say "Sign" (decision 017).
+      id: "place-signature-image",
+      label: "Place signature image…",
+      enabled: docOpen,
+      run: () => {
+        void pickPngImage().then(async (file) => {
+          if (!file) return;
+          const dataUrl = await readFileAsDataUrl(file, "image/png");
+          const size = await imageSize(dataUrl);
+          const v = useViewerStore.getState();
+          const slot = v.currentPage;
+          const src = (useDocumentStore.getState().pageOrder ??
+            v.pages.map((_, i) => i))[slot];
+          if (src === undefined || src < 0) return;
+          const page = v.pages[src];
+          const width = Math.min(200, page.width / 2);
+          const height = (width * size.height) / size.width;
+          const t = useToolStore.getState();
+          useDocumentStore.getState().execute(
+            addAnnotation({
+              id: crypto.randomUUID(),
+              kind: "image",
+              pageIndex: src,
+              rect: {
+                x: (page.width - width) / 2,
+                y: (page.height - height) / 2,
+                width,
+                height,
+              },
+              dataUrl,
+              color: "#000000",
+              opacity: 1,
+              author: t.author,
+              createdAt: Date.now(),
+              modifiedAt: Date.now(),
+            }),
+          );
+          t.setTool("select");
+        });
+      },
+    },
+    {
+      id: "draw-signature",
+      label: "Draw signature (ink)",
+      enabled: docOpen,
+      run: () => useToolStore.getState().setTool("ink"),
     },
     {
       id: "flatten-forms",
@@ -192,7 +268,7 @@ export function appCommands(): AppCommand[] {
           if (!target) return;
           await saveSubset(path, target, [slot]);
           void useTabsStore.getState().openTab(target);
-        });
+        }).catch(reportSaveError);
       },
     },
     {
@@ -218,7 +294,7 @@ export function appCommands(): AppCommand[] {
           await saveSubset(path, second, range(at, slotCount));
           void useTabsStore.getState().openTab(first);
           void useTabsStore.getState().openTab(second);
-        });
+        }).catch(reportSaveError);
       },
     },
     {
@@ -233,7 +309,7 @@ export function appCommands(): AppCommand[] {
           if (!target) return;
           await mergeDocuments(paths, target);
           void useTabsStore.getState().openTab(target);
-        });
+        }).catch(reportSaveError);
       },
     },
     {

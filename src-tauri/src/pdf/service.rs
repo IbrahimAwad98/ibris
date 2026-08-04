@@ -163,6 +163,47 @@ impl PdfService {
         result
     }
 
+    /// Enumerates a page's text objects for the edit tool (M6a). Fails on
+    /// unknown documents or pages.
+    pub async fn list_text_objects(
+        &self,
+        doc_id: u64,
+        page_index: u16,
+    ) -> Result<Vec<super::edit_text::TextObjectInfo>, PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::ListTextObjects {
+            doc_id,
+            page_index,
+            reply,
+        })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the list request".into(),
+        })?
+    }
+
+    /// Dry-runs a text edit against the file at `path` (glyph gate at
+    /// confirm time — M6a). Ok means the replacement is representable;
+    /// `Unsupported` names the missing characters. Writes nothing.
+    pub async fn check_text_edit(
+        &self,
+        path: PathBuf,
+        page_index: u16,
+        object_index: u32,
+        after: String,
+    ) -> Result<(), PdfError> {
+        let (reply, rx) = oneshot::channel();
+        EngineHandle::global().send(EngineMsg::CheckTextEdit {
+            path,
+            page_index,
+            object_index,
+            after,
+            reply,
+        })?;
+        rx.await.map_err(|_| PdfError::Internal {
+            detail: "engine dropped the check request".into(),
+        })?
+    }
+
     /// Returns the document's bookmark tree; empty when there is none.
     pub async fn outline(&self, doc_id: u64) -> Result<Vec<OutlineNode>, PdfError> {
         let (reply, rx) = oneshot::channel();
@@ -198,30 +239,20 @@ impl PdfService {
     /// subset order with another path is an extraction). The viewing
     /// document is untouched (see pdf/save.rs). Fails with `Io`,
     /// `Corrupt`, or `Internal`.
-    #[allow(clippy::too_many_arguments)] // mirrors the wire format
+    /// Applies a [`super::save::SaveRequest`] to the file at `src_path`,
+    /// writing the result to `dest_path` (same path means an in-place
+    /// save). The viewing document is untouched (see pdf/save.rs).
     pub async fn save_document(
         &self,
         src_path: PathBuf,
         dest_path: PathBuf,
-        order: Vec<i32>,
-        inserts: Vec<super::save::InsertSource>,
-        rotations: Vec<(u16, u16)>,
-        annotations: Vec<super::annot::AnnotationData>,
-        our_ids: Vec<String>,
-        field_values: Vec<super::form::FieldWrite>,
-        flatten: bool,
+        request: super::save::SaveRequest,
     ) -> Result<(), PdfError> {
         let (reply, rx) = oneshot::channel();
         EngineHandle::global().send(EngineMsg::SaveDocument {
             src_path,
             dest_path,
-            order,
-            inserts,
-            rotations,
-            annotations,
-            our_ids,
-            field_values,
-            flatten,
+            request: Box::new(request),
             reply,
         })?;
         rx.await.map_err(|_| PdfError::Internal {

@@ -26,6 +26,18 @@ const state = {
   inserts: [],
   fieldValues: {},
   flattenForms: false,
+  redactions: {
+    r1: { id: "r1", pageIndex: 0, rect: { x: 1, y: 2, width: 30, height: 10 } },
+  },
+  textEdits: {
+    "0:3": {
+      pageIndex: 0,
+      objectIndex: 3,
+      original: "Hello world",
+      text: "Held word",
+      rect: { x: 1, y: 2, width: 30, height: 10 },
+    },
+  },
   commands: [],
   cursor: 0,
   savedCursor: 0,
@@ -37,6 +49,10 @@ describe("sidecar round trip", () => {
     const wire = serializeSidecar(fp, state);
     const parsed = parseSidecar(wire, fp);
     expect(parsed?.annotations["n1"]).toMatchObject({ contents: "x" });
+    // Pending redaction marks survive a crash — as pending marks only;
+    // nothing about them touches the file until a confirmed save.
+    expect(parsed?.redactions["r1"]).toMatchObject({ pageIndex: 0 });
+    expect(parsed?.textEdits["0:3"]).toMatchObject({ text: "Held word" });
   });
 
   it("rejects a stale fingerprint", () => {
@@ -55,16 +71,20 @@ describe("sidecar round trip", () => {
 });
 
 describe("forward compatibility", () => {
-  it("parses a pre-M3/M4 sidecar without inserts or field keys", () => {
+  it("parses an older sidecar without inserts, field, redaction, or edit keys", () => {
     const wire = serializeSidecar(fp, state);
     const legacy = JSON.parse(wire) as Record<string, unknown>;
     delete legacy["inserts"];
     delete legacy["fieldValues"];
     delete legacy["flattenForms"];
+    delete legacy["redactions"];
+    delete legacy["textEdits"];
     const parsed = parseSidecar(JSON.stringify(legacy), fp);
     expect(parsed).not.toBeNull();
     expect(parsed?.inserts).toEqual([]);
     expect(parsed?.fieldValues).toEqual({});
     expect(parsed?.flattenForms).toBe(false);
+    expect(parsed?.redactions).toEqual({});
+    expect(parsed?.textEdits).toEqual({});
   });
 });

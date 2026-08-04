@@ -5,6 +5,8 @@ import type {
   CommandRecord,
   FieldState,
   InsertedPage,
+  PendingRedaction,
+  TextEditEntry,
 } from "../state/document-store";
 import type { FileFingerprint } from "../ipc/sidecar";
 
@@ -20,6 +22,10 @@ export interface SidecarState {
   fieldValues: Record<string, FieldState>;
   /** Flatten-at-save flag (M4); defaulted to false on parse. */
   flattenForms: boolean;
+  /** Pending redaction marks (M5); defaulted to empty on parse. */
+  redactions: Record<string, PendingRedaction>;
+  /** Pending in-place text edits (M6a); defaulted to empty on parse. */
+  textEdits: Record<string, TextEditEntry>;
   commands: CommandRecord[];
   cursor: number;
   savedCursor: number;
@@ -90,6 +96,14 @@ export function parseSidecar(
         ? file.fieldValues
         : {},
     flattenForms: file.flattenForms === true,
+    redactions:
+      typeof file.redactions === "object" && file.redactions !== null
+        ? file.redactions
+        : {},
+    textEdits:
+      typeof file.textEdits === "object" && file.textEdits !== null
+        ? file.textEdits
+        : {},
     commands: file.commands,
     cursor: file.cursor,
     savedCursor: file.savedCursor,

@@ -377,3 +377,194 @@ key is not honoured), and cannot cross unmounted virtualised pages.
 each field costs a focus/commit round trip at save (irrelevant at
 human form sizes). XFA is detected and declared unsupported rather
 than approximated.
+
+---
+
+## 017 — Signature placement is graphical, never cryptographic
+
+**Decided:** Ibris places signatures as pictures: freehand ink (the
+existing ink tool) or a user-picked PNG embedded as a /Stamp annotation
+whose appearance is an appended image object. No UI text, command
+label, or document ever uses the word "sign" for this; the command is
+"Place signature image". Ibris makes no claim of authenticity,
+integrity, or legal validity — a placed signature is exactly as binding
+as a photocopied one.
+
+**Alternatives:** Real digital signatures (PKCS#7/PAdES) — out of scope
+by roadmap (ARCHITECTURE.md defers signature *validation*, and signing
+requires certificate handling, trust stores, and an incremental-save
+path that decision 013 does not have). Pretending: shipping placement
+under signing language — worse than nothing, since it teaches users a
+picture is a signature.
+
+**Implementation notes:** PNG only (the `image` crate is built with
+just the png feature — promoted from dev-dependency; licence gate
+unchanged). Pixels go through `FPDFImageObj_SetBitmap` +
+`FPDFAnnot_AppendObject`, so PDFium generates the /AP form; we never
+also SetAP (it would replace the image). An image stamp whose IbrisData
+key was stripped is left visible but read-only — its pixels live only
+in the /AP, so there is no model to reconstruct (degradation ladder of
+decision 015).
+
+**Cost:** The data URL rides the model and sidecar (tens of KB per
+signature). Transparency edge cases (straight vs premultiplied alpha)
+are untested against third-party readers — manual checklist.
+
+---
+
+## 018 - Redaction: refuse loudly, remove wholly, verify before rename
+
+**Decided:** Redaction removes every text and image object whose bounds
+intersect the region (whole-object, over-redaction by design), deletes
+intersecting annotations, draws a black marker box, regenerates the
+content stream, and - always, in the engine, not only in tests -
+re-parses the final bytes and proves the regions extract no text and
+contain no images before the atomic rename. When the redacted text also
+lives in a channel PDFium cannot rewrite - document metadata (no
+setter API), outline titles (read-only API), an annotation or form
+field elsewhere - the save FAILS with the channel named. Documents
+with embedded attachments are refused entirely. The UI for redaction
+does not exist yet; the engine landed first so the safety-critical
+part is test-proven before anything looks clickable.
+
+**Alternatives:** Drawing a black rectangle (the classic lie - text
+stays extractable; ARCHITECTURE.md bans it). Partial-glyph removal
+(PDFium's public surface cannot split a text object). Removing
+intersecting Form XObjects wholesale (would silently erase unrelated
+content drawn by the same form; refused instead). Scrubbing metadata
+by hand-editing the file bytes (fragile against object streams and
+cross-reference layouts; a wrong offset corrupts the document).
+
+**Why:** For a safety feature the failure mode matters more than the
+feature: a redaction that quietly leaves the text in /Info or a
+bookmark is worse than one that refuses. Refusal messages tell the
+user which channel leaks and what to do (clear the field, delete the
+annotation). Over-redaction errs in the only acceptable direction.
+
+**Cost:** Whole-object removal can take out more text than selected
+(a region over one word removes the full text run). The refusal scan
+uses case-folded tokens of 4+ characters from the region text - a
+heuristic, documented here, not a semantic match. Redaction of content
+inside nested Form XObjects is refused, full stop.
+
+**OCR (the other half of M5), deferred honestly:** Tesseract is the
+right engine (Apache-2.0, passes decision 003), but on Windows it means
+building/bundling the native tesseract + leptonica libraries and
+shipping traineddata - a packaging project, not an afternoon. Rather
+than bolt it on shakily at the end of a long session, OCR moves to its
+own slice with the searchable-text-layer design done next to it.
+Nothing in the redaction design blocks it.
+
+---
+
+## 019 - Redaction UI: save is the commit gesture; pending marks are hatched, never black
+
+**Decided:** Marking a region for redaction is an ordinary undoable
+command producing a *pending mark*: a red diagonal-hatch overlay with a
+dashed border, an "REDACTS ON SAVE" label, and an × control — the page
+content stays visible through it. Nothing reaches the engine until the
+user saves, at which point a native warning dialog states the region
+count and that removal is permanent; declining aborts the whole save
+(it does not silently save without the redactions). When the engine
+refuses (decision 018's leak channels), the refusal text is shown
+verbatim in a native error dialog — every save entry point (Save,
+Save As, close-prompt save) routes failures through one message mapper
+and none can swallow the error.
+
+**Alternatives:** A separate "Apply redactions" action distinct from
+save (a second commit gesture to learn, and a state where a saved file
+and applied redactions can diverge); previewing the mark as a filled
+black box (indistinguishable in a screenshot from a completed
+redaction — exactly the lie decision 018 exists to prevent); saving
+without the redactions when the user declines the confirmation (the
+user's mental model is "I said don't do it", not "do the rest").
+
+**Why:** Save is already the single "write to disk" gesture in the
+architecture; redaction riding it — behind an explicit, counted,
+irreversibility-naming confirmation — keeps one commit model. The
+pending visual is designed around the screenshot test: if a screenshot
+of the pending state could pass for a done redaction, the design is
+wrong, so the mark keeps content visible and says what it will do, not
+what it has done.
+
+**Cost:** A redaction save always takes the structural rebase path
+(full reload, undo history reset) — correct anyway, since the page
+content changed on disk. Declining the confirmation aborts saves of
+unrelated edits too; the user unmarks regions (undoable, ×) to save
+without redacting.
+
+---
+
+## 020 - OCR re-evaluated (2026-08), deferred again with reasons
+
+**Decided:** OCR stays deferred. This is the honest re-visit that
+decision 018 promised, not a rubber stamp — the packaging landscape
+was checked again and the conclusion stands.
+
+**What was evaluated:**
+
+- *Tesseract via `tesseract-sys`* (the 018 plan): on Windows this
+  still means a vcpkg toolchain build of tesseract + leptonica —
+  there are no official pinned prebuilt binaries to fetch the way
+  `scripts/get-pdfium.ps1` fetches PDFium. A vcpkg build is not a
+  reproducible pinned fetch; it is a compiler run whose output varies
+  with vcpkg baseline state. The bar set for this project (pin a
+  release artefact or don't ship it) is still not clearable without
+  us becoming the builder and distributor of those binaries — a
+  packaging project of its own, exactly as 018 said.
+- *Pure-Rust engines, new since 018 was written:* `ocrs` (MIT/
+  Apache-2.0, models auto-downloaded) is explicitly an early preview
+  and supports the Latin alphabet only — disqualifying for a PDF
+  editor whose own fixture set includes CJK documents. `oar-ocr`
+  (PP-OCR model family) covers more scripts but brings an ML runtime
+  and a model-distribution story that needs its own licence and
+  pinning review. Promising direction, immature today.
+
+**Why deferral is right:** the OCR feature is not just an engine
+call — it is engine + invisible text layer written back into the PDF
+(text render mode 3, positioned at word boxes) + fixtures + a
+language-coverage story. Half-shipping a Latin-only preview engine
+under a feature users read as "make my scans searchable" fails the
+same honesty test that redaction's black-box ban encodes.
+
+**Trigger to revisit:** a pure-Rust engine with CJK support and
+pinned, permissively-licensed models — or official prebuilt Tesseract
+Windows artefacts. Either clears the reproducible-fetch bar and makes
+OCR an ordinary milestone.
+
+---
+
+## 021 - M6a text editing: glyph-path gate is authoritative; pending edits are overlay patches
+
+**Decided:** Three structural choices inside M6-PLAN §2's frame.
+(1) *The glyph gate is `FPDFFont_GetGlyphPath` per character*
+(whitespace exempt — spaces are advances, not outlines), run at
+confirm time as an engine dry-run against the on-disk bytes and again
+inside every save. The extract-back comparison after `FPDFText_SetText`
+is a second layer, not the gate: for simple fonts with standard
+encodings (WinAnsi etc.) extraction decodes through the *encoding*,
+which round-trips even when the *glyph* is missing — extraction alone
+would accept tofu. Proven by the subset-font fixture (a synthetic
+embedded TrueType carrying only {H,e,l,o,w,r,d,space}, built from
+scratch with fontTools so the repo has no third-party font licensing).
+(2) *Pending edits never touch the viewing document.* They are
+overlay patches (the decision-016 FormLayer pattern: opaque,
+paper-coloured, dashed amber outline) and the save takes the
+structural rebase path. The alternative — live `FPDFText_SetText` on
+the viewing document with engine-side undo replay — would put an IPC
+side effect inside every undo/redo/jumpTo/restore path for a cosmetic
+gain; M6-PLAN left this open and "less invasive" decides it.
+(3) *One content-rewriting feature per save*: text edits combined
+with flatten (any page) or with redaction (same page) are refused with
+instructions to save one first. Flatten adds text objects and
+redaction removes whole ones — either would force the save-time
+verification (exact per-object text comparison of every edited page,
+re-parsed from the final bytes before the rename) to weaken into
+heuristics. A refused combination keeps the check exact.
+
+**Cost:** Edits go stale across external file changes (refused with a
+reopen instruction — by design); the pending patch is close-but-not-
+WYSIWYG (overlay font differs from the embedded font until save);
+users must sequence flatten/redact/edit saves. `saveSubset`
+(extract/split) does not carry pending text edits — extraction exports
+the file's own text; noted as a ceiling, matching pending redactions.

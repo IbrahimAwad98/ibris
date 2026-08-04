@@ -29,8 +29,8 @@ pdfium-render = "0.9.3"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1.53.1", features = ["sync"] }
 thiserror = "2.0.19"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 
 [dev-dependencies]
-image = { version = "0.25.10", default-features = false, features = ["png"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
 

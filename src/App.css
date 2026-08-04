@@ -6,6 +6,7 @@
   --bg-sidebar: #2a2a2e;
   --bg-active: #3a3a40;
   --bg-input: #1e1e22;
+  --bg-panel: var(--bg-raised);
   --border: #55555c;
   --border-deep: #26262a;
   --text: #ececec;
@@ -13,6 +14,7 @@
   --accent: #3a84ff;
   --accent-soft: #6a9fff;
   --error: #ff8a80;
+  --danger: #ff8a80;
 }
 
 :root[data-theme="light"] {
@@ -29,6 +31,7 @@
   --accent: #2867d2;
   --accent-soft: #2867d2;
   --error: #c62828;
+  --danger: #c62828;
 }
 
 html,
@@ -268,6 +271,45 @@ button:focus-visible,
   background: var(--bg-active);
   color: var(--text);
   border-color: var(--border);
+}
+
+.annot-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 2px 4px;
+  flex-shrink: 0;
+}
+
+/* Redact is destructive, not a drawing tool; the chrome says so. */
+.annot-sep.danger {
+  margin-left: 12px;
+  background: var(--danger);
+  opacity: 0.5;
+}
+
+.annot-tool.danger {
+  color: var(--danger);
+}
+
+.annot-tool.danger:hover {
+  border-color: var(--danger);
+}
+
+.annot-tool.danger.active {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.redact-pending-note {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  color: var(--danger);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .annot-settings {

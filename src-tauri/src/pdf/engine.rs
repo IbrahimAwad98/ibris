@@ -114,6 +114,21 @@ pub enum EngineMsg {
         page_index: u16,
         reply: oneshot::Sender<Result<PageText, PdfError>>,
     },
+    /// Enumerates a page's text objects for the edit tool (M6a).
+    ListTextObjects {
+        doc_id: u64,
+        page_index: u16,
+        reply: oneshot::Sender<Result<Vec<super::edit_text::TextObjectInfo>, PdfError>>,
+    },
+    /// Dry-runs a text edit against a throwaway load of the file — the
+    /// glyph gate at confirm time. Nothing is written anywhere.
+    CheckTextEdit {
+        path: PathBuf,
+        page_index: u16,
+        object_index: u32,
+        after: String,
+        reply: oneshot::Sender<Result<(), PdfError>>,
+    },
     /// Searches one bounded page range; the caller streams the whole
     /// document by sending successive ranges, so long documents never
     /// monopolise the engine queue.
@@ -137,19 +152,7 @@ pub enum EngineMsg {
     SaveDocument {
         src_path: PathBuf,
         dest_path: PathBuf,
-        /// Final page sequence as source indexes; omissions are deletions;
-        /// negative entries reference `inserts` (order -(k+1) = inserts[k]).
-        order: Vec<i32>,
-        /// Pages imported from other files.
-        inserts: Vec<super::save::InsertSource>,
-        /// Extra clockwise rotation in degrees per source page.
-        rotations: Vec<(u16, u16)>,
-        annotations: Vec<super::annot::AnnotationData>,
-        our_ids: Vec<String>,
-        /// Form field values to fill (M4).
-        field_values: Vec<super::form::FieldWrite>,
-        /// Flatten annotations and fields into page content (M4).
-        flatten: bool,
+        request: Box<super::save::SaveRequest>,
         reply: oneshot::Sender<Result<(), PdfError>>,
     },
     /// Concatenates whole files into a new document.
@@ -177,10 +180,12 @@ impl EngineMsg {
             EngineMsg::Open { .. }
             | EngineMsg::SaveDocument { .. }
             | EngineMsg::MergeDocuments { .. }
+            | EngineMsg::CheckTextEdit { .. }
             | EngineMsg::ReadAnnotations { .. } => None,
             EngineMsg::Render(r) => Some(r.doc_id),
             EngineMsg::RenderTile(r) => Some(r.doc_id),
             EngineMsg::ExtractText { doc_id, .. }
+            | EngineMsg::ListTextObjects { doc_id, .. }
             | EngineMsg::Search { doc_id, .. }
             | EngineMsg::Outline { doc_id, .. }
             | EngineMsg::Close { doc_id } => Some(*doc_id),
@@ -375,6 +380,34 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 let result = with_page(&docs, doc_id, page_index, extract_runs);
                 let _ = reply.send(result);
             }
+            EngineMsg::ListTextObjects {
+                doc_id,
+                page_index,
+                reply,
+            } => {
+                let result = with_page(&docs, doc_id, page_index, |page| {
+                    Ok(super::edit_text::list_text_objects(page))
+                });
+                let _ = reply.send(result);
+            }
+            EngineMsg::CheckTextEdit {
+                path,
+                page_index,
+                object_index,
+                after,
+                reply,
+            } => {
+                let result = pdfium().map(|_| ()).and_then(|()| {
+                    struct Access;
+                    impl PdfiumLibraryBindingsAccessor<'static> for Access {}
+                    let b = Access.bindings();
+                    let bytes = std::fs::read(&path).map_err(|e| PdfError::Io {
+                        detail: format!("reading {}: {e}", path.display()),
+                    })?;
+                    unsafe { super::edit_text::check(b, &bytes, page_index, object_index, &after) }
+                });
+                let _ = reply.send(result);
+            }
             EngineMsg::Search {
                 doc_id,
                 query,
@@ -426,13 +459,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
             EngineMsg::SaveDocument {
                 src_path,
                 dest_path,
-                order,
-                inserts,
-                rotations,
-                annotations,
-                our_ids,
-                field_values,
-                flatten,
+                request,
                 reply,
             } => {
                 // pdfium()? guarantees the bindings global is initialised
@@ -440,18 +467,7 @@ fn engine_main(queue: Arc<EngineQueue>) {
                 let result = pdfium().map(|_| ()).and_then(|()| {
                     struct Access;
                     impl PdfiumLibraryBindingsAccessor<'static> for Access {}
-                    super::save::save_document(
-                        Access.bindings(),
-                        &src_path,
-                        &dest_path,
-                        &order,
-                        &inserts,
-                        &rotations,
-                        &annotations,
-                        &our_ids,
-                        &field_values,
-                        flatten,
-                    )
+                    super::save::save_document(Access.bindings(), &src_path, &dest_path, &request)
                 });
                 let _ = reply.send(result);
             }
