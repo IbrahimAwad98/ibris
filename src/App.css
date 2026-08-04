@@ -6,6 +6,7 @@
   --bg-sidebar: #2a2a2e;
   --bg-active: #3a3a40;
   --bg-input: #1e1e22;
+  --bg-panel: var(--bg-raised);
   --border: #55555c;
   --border-deep: #26262a;
   --text: #ececec;
