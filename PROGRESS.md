@@ -517,3 +517,35 @@ at the bottom. Branch per milestone; nothing pushed.
     save rebases and the page bitmap shows the new text.
   - Editor UX judgement call: patch/editor font sizing at zoom levels,
     rotated pages (expected non-WYSIWYG, M6-PLAN).
+
+- **2026-08-04 22:45** — UI polish landed on feat/ui-polish (from the
+  screenshot audit): missing `--bg-panel` defined (f8e5693 — it was used
+  by five components and resolved to transparent, making form fields,
+  edit patches, and the page list render with no background); tool strip
+  regrouped with Redact pulled out of the drawing groups behind its own
+  danger-tinted separator, carried by the new `--danger` variable
+  (d9c4e0d); insert/extract/split/merge surfaced as Pages-sidebar
+  buttons riding the registry commands unchanged (3f75bb5); CLAUDE.md
+  stack table corrected — Tailwind and Immer were never installed
+  (89693d4).
+
+  FOLLOW-UP BUGS (logged, deliberately not fixed in the polish branch;
+  the audit session's original list was lost to context compaction —
+  item 1 is the one the user named, 2 and 3 re-derived and verified by
+  code reading this session):
+  1. **Form widgets leak across tabs.** `takeSnapshot`/`applySnapshot`
+     (tabs-store.ts) never save or restore `docForm`, which lives in
+     viewer-store. Switch from an AcroForm tab to any other tab:
+     FormLayer keeps rendering the previous document's widgets at their
+     old rects, and the XFA banner has the same hole. Fix: carry
+     `docForm` in the viewer slice of the tab snapshot.
+  2. **Blank sidebar panel when the Outline tab is active and the
+     document has none.** Sidebar hides the Outline tab button when
+     `outline.length === 0` but `sidebarTab` can still be "outline"
+     (kept on tab switch/open) — no tab shows active and the panel is
+     empty. Fix: fall back to "thumbnails" when the outline is absent.
+  3. **Form fields swallow pointer events regardless of active tool.**
+     Field boxes set `pointerEvents: auto` unless read-only/flatten, so
+     with ink/rect/redact active a drag that starts over a widget
+     focuses the field instead of drawing. Fix: gate field pointer
+     events on the select tool being active.
