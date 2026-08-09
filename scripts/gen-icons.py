@@ -4,7 +4,7 @@ from fontTools.pens.svgPathPen import SVGPathPen
 import cairosvg
 from PIL import Image
 
-OUT = "/home/claude/ibris-brand"
+OUT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO = f"{OUT}/assets/logo"
 ICONS = f"{OUT}/src-tauri/icons"
 for d in (LOGO, ICONS):
