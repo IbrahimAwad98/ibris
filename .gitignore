@@ -11,3 +11,11 @@ src-tauri/pdfium/
 ibris-logo.zip
 
 public/shot.json
+
+# internal working notes — kept locally, not published
+CLAUDE.md
+PROGRESS.md
+M2-PLAN.md
+M6-PLAN.md
+NOTES.md
+docs/superpowers/
